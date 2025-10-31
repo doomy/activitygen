@@ -1,0 +1,14 @@
+Create a minimal console application, that accesses the data in remote database, and returns a random activity taking its priority into account.
+- The app should be written in PHP, use composer for package management and use symfony/console as command line framework
+- apart from that we would like to keep things minimal, do not include any obtuse packages. ORM is also not needed for this simple functionality.
+- you can find the remote database connection details in <app_root>/env/.db
+- on the remote database, there is a table t_activity with string column activity and int column priority which is a decimal number with one decimal place.
+- the command will first determine minimum priority for current request which will be a random number betweem 0 and max(priority)
+- then the command makes a second request to the db where it takes a single row with priority same or higher as the random roll specified above ordered randomly
+- please use docker to run the php server
+- I want to be able to run the command via the command 'bin/ag' inside my terminal, even outside of the docker container
+- the command should then output:
+	- selected activity and its priority 
+	- the randomized minimum roll for this request
+- do not write any PHP comments, just meaningful naming is sufficient
+- after the activity is selected, the command should wait for a key input and perfom the whole loop again. Unless the user inputs 'q' to quit the application.

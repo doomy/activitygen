@@ -1,0 +1,12 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use App\Command\GetActivityCommand;
+use Symfony\Component\Console\Application;
+
+$application = new Application('ActivityGen', '1.0.0');
+$application->add(new GetActivityCommand());
+$application->setDefaultCommand('activity:get', true);
+$application->run();
