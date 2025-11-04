@@ -4,9 +4,12 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Command\GetActivityCommand;
+use App\DatabaseConnectionFactory;
 use Symfony\Component\Console\Application;
 
+$database = DatabaseConnectionFactory::create();
+
 $application = new Application('ActivityGen', '1.0.0');
-$application->add(new GetActivityCommand());
+$application->add(new GetActivityCommand($database));
 $application->setDefaultCommand('activity:get', true);
 $application->run();
