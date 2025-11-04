@@ -1,0 +1,2 @@
+Before doing anything, read, follow and keep in mind the rules found at: https://raw.githubusercontent.com/doomy/ai/refs/heads/main/prompts/php_general_guidelines.txt
+Modify the current app so that a new activity can be added with ease with default rating of 1.0
