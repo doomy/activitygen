@@ -4,18 +4,10 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Command\GetActivityCommand;
+use App\DatabaseConnectionFactory;
 use Symfony\Component\Console\Application;
 
-$dsn = sprintf(
-    "mysql:host=%s;dbname=%s;charset=utf8mb4",
-    getenv('DB_HOST'),
-    getenv('DB_DATABASE')
-);
-
-$database = new PDO($dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'), [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-]);
+$database = DatabaseConnectionFactory::create();
 
 $application = new Application('ActivityGen', '1.0.0');
 $application->add(new GetActivityCommand($database));
