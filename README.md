@@ -35,6 +35,8 @@ ActivityGen retrieves random activities from a MySQL database, weighted by their
 
 ## Usage
 
+### Getting Activity Suggestions
+
 Run the application using the provided shell script:
 
 ```bash
@@ -45,6 +47,20 @@ Or directly with Docker Compose:
 
 ```bash
 docker-compose run --rm app php bin/console
+```
+
+### Adding New Activities
+
+Add a new activity with default priority (1.0):
+
+```bash
+./bin/ag activity:add "Your activity name"
+```
+
+Or with Docker Compose:
+
+```bash
+docker-compose run --rm app php bin/console activity:add "Your activity name"
 ```
 
 ### Controls
