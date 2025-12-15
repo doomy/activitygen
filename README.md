@@ -63,6 +63,20 @@ Or with Docker Compose:
 docker-compose run --rm app php bin/console activity:add "Your activity name"
 ```
 
+### Deleting Activities
+
+Delete an activity from the database:
+
+```bash
+./bin/ag activity:delete "Your activity name"
+```
+
+Or with Docker Compose:
+
+```bash
+docker-compose run --rm app php bin/console activity:delete "Your activity name"
+```
+
 ### Controls
 
 When an activity is displayed:
