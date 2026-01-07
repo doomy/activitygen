@@ -127,6 +127,9 @@ class GetActivityCommand extends Command
         $newPriority = $this->calculateNewPriority($activity['priority'], $adjustment);
         $this->updateActivityPriority($activity['activity'], $newPriority);
         $this->displayPriorityChange($newPriority);
+        
+        // Wait for another keystroke before continuing
+        $this->waitForKeystroke();
     }
 
     private function getPriorityAdjustment(string $userInput): float
@@ -162,6 +165,18 @@ class GetActivityCommand extends Command
     private function displayPriorityChange(float $newPriority): void
     {
         $this->output->writeln("<info>Priority adjusted to {$newPriority}</info>");
+        $this->output->writeln("");
+    }
+
+    private function waitForKeystroke(): void
+    {
+        $this->output->write("Press any key to continue...");
+
+        system('stty cbreak -echo');
+        fgetc(STDIN);
+        system('stty -cbreak echo');
+
+        $this->output->writeln("");
         $this->output->writeln("");
     }
 }
