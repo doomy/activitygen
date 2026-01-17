@@ -57,10 +57,22 @@ Add a new activity with default priority (1.0):
 ./bin/ag activity:add "Your activity name"
 ```
 
+Add a new activity with a custom starting priority (whole number):
+
+```bash
+./bin/ag activity:add "Your activity name" 3
+```
+
 Or with Docker Compose:
 
 ```bash
 docker-compose run --rm app php bin/console activity:add "Your activity name"
+```
+
+Or with a custom starting priority using Docker Compose:
+
+```bash
+docker-compose run --rm app php bin/console activity:add "Your activity name" 3
 ```
 
 ### Deleting Activities

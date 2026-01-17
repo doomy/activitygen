@@ -25,17 +25,20 @@ class AddActivityCommand extends Command
     protected function configure(): void
     {
         $this
-            ->setDescription('Add a new activity with default priority')
-            ->addArgument('activity', InputArgument::REQUIRED, 'The activity name');
+            ->setDescription('Add a new activity with optional custom priority')
+            ->addArgument('activity', InputArgument::REQUIRED, 'The activity name')
+            ->addArgument('rating', InputArgument::OPTIONAL, 'Custom priority rating (whole number)', null);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $activityName = $input->getArgument('activity');
+        $rating = $input->getArgument('rating');
+        $priority = $rating !== null ? (float) $rating : self::DEFAULT_PRIORITY;
 
         try {
-            $this->addActivity($activityName);
-            $output->writeln("<info>Activity '{$activityName}' added with priority " . self::DEFAULT_PRIORITY . "</info>");
+            $this->addActivity($activityName, $priority);
+            $output->writeln("<info>Activity '{$activityName}' added with priority {$priority}</info>");
             return Command::SUCCESS;
         } catch (\PDOException $e) {
             if ($e->getCode() === '23000') {
@@ -47,14 +50,14 @@ class AddActivityCommand extends Command
         }
     }
 
-    private function addActivity(string $activityName): void
+    private function addActivity(string $activityName, float $priority): void
     {
         $statement = $this->database->prepare(
             'INSERT INTO t_activity (activity, priority) VALUES (:activity, :priority)'
         );
         $statement->execute([
             'activity' => $activityName,
-            'priority' => self::DEFAULT_PRIORITY
+            'priority' => $priority,
         ]);
     }
 }
