@@ -22,9 +22,14 @@ docker compose run --rm app php bin/console
 
 ### Activity Management
 
-Add a new activity:
+Add a new activity with default priority (1.0):
 ```bash
 ./bin/ag activity:add "Activity name"
+```
+
+Add a new activity with a custom starting priority (whole number):
+```bash
+./bin/ag activity:add "Activity name" 3
 ```
 
 Delete an activity:
@@ -73,7 +78,7 @@ docker compose run --rm app php bin/console <command>
 
 **Commands** (`src/Command/`)
 - `GetActivityCommand`: Main interactive loop for activity selection with priority adjustments
-- `AddActivityCommand`: Inserts new activities with default priority (1.0)
+- `AddActivityCommand`: Inserts new activities with default priority (1.0) or an optional custom whole-number priority when provided
 - `DeleteActivityCommand`: Removes activities by name
 
 ### Selection Algorithm
