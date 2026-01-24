@@ -10,7 +10,6 @@ class SyncManager
     private RemoteDataSource $remoteDataSource;
     private LocalDataSource $localDataSource;
 
-    // PDO error codes
     private const SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION = '23000';
     private const MYSQL_ERROR_DUPLICATE_ENTRY = 1062;
 
@@ -41,15 +40,12 @@ class SyncManager
                 
                 if ($result === 'skipped') {
                     $skippedCount++;
-                    // Provide more specific message based on operation
-                    $reason = $this->getSkipReason($item['operation']);
                     $errors[] = [
                         'operation' => $item['operation'],
                         'activity' => $item['activity'],
-                        'error' => $reason,
+                        'error' => $this->getSkipReason($item['operation']),
                         'severity' => 'warning',
                     ];
-                    // Still mark as processed to remove from queue
                     $processedIds[] = $item['id'];
                 } else {
                     $successCount++;
@@ -66,7 +62,6 @@ class SyncManager
             }
         }
 
-        // Remove successfully processed items (including skipped ones)
         foreach ($processedIds as $id) {
             $this->localDataSource->removeSyncQueueItem($id);
         }
@@ -80,8 +75,6 @@ class SyncManager
     }
 
     /**
-     * Full bidirectional sync: queue→remote first, then remote→local
-     *
      * @return array{success: int, failed: int, errors: array}
      */
     public function fullSync(): array
@@ -95,60 +88,59 @@ class SyncManager
     {
         switch ($item['operation']) {
             case 'ADD_ACTIVITY':
-                try {
-                    $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
-                    return 'success';
-                } catch (\PDOException $e) {
-                    // Check if this is a unique constraint violation (activity already exists)
-                    if ($this->isUniqueConstraintViolation($e)) {
-                        // Activity already exists in remote database (possibly added by another client)
-                        // Skip this operation as the activity is already there
-                        return 'skipped';
-                    }
-                    // Re-throw other PDO exceptions
-                    throw $e;
-                }
+                return $this->processAddActivity($item);
 
             case 'DELETE_ACTIVITY':
                 $this->remoteDataSource->deleteActivity($item['activity']);
                 return 'success';
 
             case 'PRIORITY_ADJUST':
-                $currentActivity = $this->remoteDataSource->getActivityByName($item['activity']);
-                if (!$currentActivity) {
-                    // Activity doesn't exist remotely - skip this operation
-                    return 'skipped';
-                }
-                $newPriority = max(0.1, round($currentActivity['priority'] + $item['delta'], 1));
-                $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
-                return 'success';
+                return $this->processPriorityAdjust($item);
 
             default:
                 throw new \RuntimeException("Unknown operation: {$item['operation']}");
         }
     }
 
+    private function processAddActivity(array $item): string
+    {
+        try {
+            $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
+            return 'success';
+        } catch (\PDOException $e) {
+            if ($this->isUniqueConstraintViolation($e)) {
+                return 'skipped';
+            }
+            throw $e;
+        }
+    }
+
+    private function processPriorityAdjust(array $item): string
+    {
+        $currentActivity = $this->remoteDataSource->getActivityByName($item['activity']);
+        if (!$currentActivity) {
+            return 'skipped';
+        }
+        
+        $newPriority = max(0.1, round($currentActivity['priority'] + $item['delta'], 1));
+        $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
+        return 'success';
+    }
+
     private function isUniqueConstraintViolation(\PDOException $e): bool
     {
-        // Check SQLSTATE code for integrity constraint violations
-        // getCode() can return string or int, so we compare as string
         $code = (string) $e->getCode();
         if ($code === self::SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION) {
             return true;
         }
         
-        // Check specific database error codes via errorInfo array
-        // errorInfo is an array with [SQLSTATE, driver error code, driver error message]
         $errorInfo = $e->errorInfo ?? null;
         if (is_array($errorInfo) && isset($errorInfo[1])) {
-            // MySQL-specific duplicate entry error code
             if ($errorInfo[1] === self::MYSQL_ERROR_DUPLICATE_ENTRY) {
                 return true;
             }
         }
         
-        // Fallback: Check error message patterns for SQLite and other databases
-        // This is a last resort when error codes are not available
         $message = $e->getMessage();
         return str_contains($message, 'Duplicate entry') ||
                str_contains($message, 'UNIQUE constraint failed');
