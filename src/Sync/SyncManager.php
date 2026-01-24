@@ -128,12 +128,24 @@ class SyncManager
 
     private function isUniqueConstraintViolation(\PDOException $e): bool
     {
-        // MySQL error code 23000 is for integrity constraint violations
-        // Error code 1062 is specifically for duplicate entry
-        // SQLite uses SQLSTATE 23000 for constraint violations
-        return $e->getCode() === '23000' || 
-               strpos($e->getMessage(), 'Duplicate entry') !== false ||
-               strpos($e->getMessage(), 'UNIQUE constraint failed') !== false;
+        // Check SQLSTATE code (23000 is for integrity constraint violations)
+        if ($e->getCode() === '23000') {
+            return true;
+        }
+        
+        // Check specific error codes from errorInfo
+        $errorInfo = $e->errorInfo;
+        if ($errorInfo !== null && isset($errorInfo[1])) {
+            // MySQL: 1062 = Duplicate entry
+            if ($errorInfo[1] === 1062) {
+                return true;
+            }
+        }
+        
+        // Fallback: Check error message patterns (for SQLite and other edge cases)
+        $message = $e->getMessage();
+        return strpos($message, 'Duplicate entry') !== false ||
+               strpos($message, 'UNIQUE constraint failed') !== false;
     }
 
     public function hasPendingSync(): bool
