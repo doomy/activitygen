@@ -12,6 +12,7 @@ class SyncManager
 
     private const SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION = '23000';
     private const MYSQL_ERROR_DUPLICATE_ENTRY = 1062;
+    private const MIN_PRIORITY = 0.1;
 
     public function __construct(RemoteDataSource $remoteDataSource, LocalDataSource $localDataSource)
     {
@@ -122,7 +123,7 @@ class SyncManager
             return 'skipped';
         }
         
-        $newPriority = max(0.1, round($currentActivity['priority'] + $item['delta'], 1));
+        $newPriority = max(self::MIN_PRIORITY, round($currentActivity['priority'] + $item['delta'], 1));
         $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
         return 'success';
     }
