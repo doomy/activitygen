@@ -37,10 +37,14 @@ class SyncManager
                 
                 if ($result === 'skipped') {
                     $skippedCount++;
+                    // Provide more specific message based on operation
+                    $reason = $item['operation'] === 'ADD_ACTIVITY' 
+                        ? 'Activity already exists in remote database (possibly added by another client)'
+                        : 'Activity no longer exists in remote database';
                     $errors[] = [
                         'operation' => $item['operation'],
                         'activity' => $item['activity'],
-                        'error' => 'Activity no longer exists in remote database',
+                        'error' => $reason,
                         'severity' => 'warning',
                     ];
                     // Still mark as processed to remove from queue
@@ -89,8 +93,19 @@ class SyncManager
     {
         switch ($item['operation']) {
             case 'ADD_ACTIVITY':
-                $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
-                return 'success';
+                try {
+                    $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
+                    return 'success';
+                } catch (\PDOException $e) {
+                    // Check if this is a unique constraint violation (activity already exists)
+                    if ($this->isUniqueConstraintViolation($e)) {
+                        // Activity already exists in remote database (possibly added by another client)
+                        // Skip this operation as the activity is already there
+                        return 'skipped';
+                    }
+                    // Re-throw other PDO exceptions
+                    throw $e;
+                }
 
             case 'DELETE_ACTIVITY':
                 $this->remoteDataSource->deleteActivity($item['activity']);
@@ -109,6 +124,16 @@ class SyncManager
             default:
                 throw new \RuntimeException("Unknown operation: {$item['operation']}");
         }
+    }
+
+    private function isUniqueConstraintViolation(\PDOException $e): bool
+    {
+        // MySQL error code 23000 is for integrity constraint violations
+        // Error code 1062 is specifically for duplicate entry
+        // SQLite uses SQLSTATE 23000 for constraint violations
+        return $e->getCode() === '23000' || 
+               strpos($e->getMessage(), 'Duplicate entry') !== false ||
+               strpos($e->getMessage(), 'UNIQUE constraint failed') !== false;
     }
 
     public function hasPendingSync(): bool
