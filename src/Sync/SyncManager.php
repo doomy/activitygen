@@ -131,13 +131,16 @@ class SyncManager
     private function isUniqueConstraintViolation(\PDOException $e): bool
     {
         // Check SQLSTATE code for integrity constraint violations
-        if ($e->getCode() === self::SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION) {
+        // getCode() can return string or int, so we compare as string
+        $code = (string) $e->getCode();
+        if ($code === self::SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION) {
             return true;
         }
         
         // Check specific database error codes via errorInfo array
-        $errorInfo = $e->errorInfo;
-        if ($errorInfo !== null && isset($errorInfo[1])) {
+        // errorInfo is an array with [SQLSTATE, driver error code, driver error message]
+        $errorInfo = $e->errorInfo ?? null;
+        if (is_array($errorInfo) && isset($errorInfo[1])) {
             // MySQL-specific duplicate entry error code
             if ($errorInfo[1] === self::MYSQL_ERROR_DUPLICATE_ENTRY) {
                 return true;
@@ -147,8 +150,8 @@ class SyncManager
         // Fallback: Check error message patterns for SQLite and other databases
         // This is a last resort when error codes are not available
         $message = $e->getMessage();
-        return strpos($message, 'Duplicate entry') !== false ||
-               strpos($message, 'UNIQUE constraint failed') !== false;
+        return str_contains($message, 'Duplicate entry') ||
+               str_contains($message, 'UNIQUE constraint failed');
     }
 
     private function getSkipReason(string $operation): string
