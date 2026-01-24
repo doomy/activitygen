@@ -16,20 +16,12 @@ class SyncManager
         $this->localDataSource = $localDataSource;
     }
 
-    /**
-     * Sync data from remote to local (full copy)
-     */
     public function syncFromRemote(): void
     {
         $activities = $this->remoteDataSource->getActivities();
         $this->localDataSource->replaceAllActivities($activities);
     }
 
-    /**
-     * Push queued operations to remote database
-     *
-     * @return array{success: int, failed: int, errors: array}
-     */
     public function syncToRemote(): array
     {
         $queue = $this->localDataSource->getSyncQueue();
@@ -43,7 +35,7 @@ class SyncManager
                 $successCount++;
             } catch (\Exception $e) {
                 $failedCount++;
-                $errors[] = [
+                 $errors[] = [
                     'operation' => $item['operation'],
                     'activity' => $item['activity'],
                     'error' => $e->getMessage(),
@@ -63,14 +55,15 @@ class SyncManager
     }
 
     /**
-     * Full bidirectional sync: remote→local, then queue→remote
+     * Full bidirectional sync: queue→remote first, then remote→local
      *
      * @return array{success: int, failed: int, errors: array}
      */
     public function fullSync(): array
     {
+        $result = $this->syncToRemote();
         $this->syncFromRemote();
-        return $this->syncToRemote();
+        return $result;
     }
 
     private function processQueueItem(array $item): void
