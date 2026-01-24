@@ -6,7 +6,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use PDO;
+use App\DataSource\DataSourceInterface;
 
 class AddActivityCommand extends Command
 {
@@ -14,12 +14,12 @@ class AddActivityCommand extends Command
 
     private const DEFAULT_PRIORITY = 1.0;
 
-    private PDO $database;
+    private DataSourceInterface $dataSource;
 
-    public function __construct(PDO $database)
+    public function __construct(DataSourceInterface $dataSource)
     {
         parent::__construct();
-        $this->database = $database;
+        $this->dataSource = $dataSource;
     }
 
     protected function configure(): void
@@ -37,11 +37,11 @@ class AddActivityCommand extends Command
         $priority = $rating !== null ? (float) $rating : self::DEFAULT_PRIORITY;
 
         try {
-            $this->addActivity($activityName, $priority);
+            $this->dataSource->addActivity($activityName, $priority);
             $output->writeln("<info>Activity '{$activityName}' added with priority {$priority}</info>");
             return Command::SUCCESS;
-        } catch (\PDOException $e) {
-            if ($e->getCode() === '23000') {
+        } catch (\Exception $e) {
+            if (strpos($e->getMessage(), 'UNIQUE constraint') !== false || strpos($e->getMessage(), 'Duplicate entry') !== false) {
                 $output->writeln("<error>Activity '{$activityName}' already exists</error>");
             } else {
                 $output->writeln("<error>Database error: {$e->getMessage()}</error>");
@@ -50,14 +50,4 @@ class AddActivityCommand extends Command
         }
     }
 
-    private function addActivity(string $activityName, float $priority): void
-    {
-        $statement = $this->database->prepare(
-            'INSERT INTO t_activity (activity, priority) VALUES (:activity, :priority)'
-        );
-        $statement->execute([
-            'activity' => $activityName,
-            'priority' => $priority,
-        ]);
-    }
 }

@@ -6,14 +6,62 @@ require __DIR__ . '/../vendor/autoload.php';
 use App\Command\GetActivityCommand;
 use App\Command\AddActivityCommand;
 use App\Command\DeleteActivityCommand;
-use App\DatabaseConnectionFactory;
+use App\Command\SyncCommand;
+use App\ConnectionManager;
+use App\Sync\SyncManager;
 use Symfony\Component\Console\Application;
 
-$database = DatabaseConnectionFactory::create();
+$connectionManager = new ConnectionManager();
+$dataSource = $connectionManager->getDataSource();
 
 $application = new Application('ActivityGen', '1.0.0');
-$application->add(new GetActivityCommand($database));
-$application->add(new AddActivityCommand($database));
-$application->add(new DeleteActivityCommand($database));
+
+// Show connection status
+if ($connectionManager->isOnline()) {
+    echo "[Connected to remote database]\n";
+    
+    // Auto-sync from remote to local if online
+    try {
+        $localDataSource = $connectionManager->getLocalDataSource();
+        $remoteDataSource = $connectionManager->getRemoteDataSource();
+        
+        if ($remoteDataSource && $localDataSource) {
+            $syncManager = new SyncManager($remoteDataSource, $localDataSource);
+            
+            // Check if we have pending operations to sync
+            if ($syncManager->hasPendingSync()) {
+                $pendingCount = $syncManager->getPendingSyncCount();
+                echo "[Syncing {$pendingCount} pending operations to remote...]\n";
+                $result = $syncManager->fullSync();
+                
+                if ($result['failed'] === 0) {
+                    echo "[Sync complete]\n";
+                } else {
+                    echo "[Warning: {$result['failed']} operations failed to sync]\n";
+                }
+            } else {
+                // Just sync from remote to local to stay up-to-date
+                $syncManager->syncFromRemote();
+            }
+        }
+    } catch (\Exception $e) {
+        echo "[Warning: Auto-sync failed: {$e->getMessage()}]\n";
+    }
+} else {
+    echo "[Offline mode - using local database]\n";
+    
+    $localDataSource = $connectionManager->getLocalDataSource();
+    if ($localDataSource->hasPendingSync()) {
+        $pendingCount = count($localDataSource->getSyncQueue());
+        echo "[You have {$pendingCount} operations waiting to sync]\n";
+    }
+}
+
+echo "\n";
+
+$application->add(new GetActivityCommand($dataSource));
+$application->add(new AddActivityCommand($dataSource));
+$application->add(new DeleteActivityCommand($dataSource));
+$application->add(new SyncCommand($connectionManager));
 $application->setDefaultCommand('activity:get');
 $application->run();
