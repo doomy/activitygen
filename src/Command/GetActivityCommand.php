@@ -5,7 +5,7 @@ namespace App\Command;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use PDO;
+use App\DataSource\DataSourceInterface;
 
 class GetActivityCommand extends Command
 {
@@ -14,13 +14,13 @@ class GetActivityCommand extends Command
     private const MINIMUM_PRIORITY = 0.1;
     private const PRIORITY_ADJUSTMENT = 0.1;
 
-    private PDO $database;
+    private DataSourceInterface $dataSource;
     private OutputInterface $output;
 
-    public function __construct(PDO $database)
+    public function __construct(DataSourceInterface $dataSource)
     {
         parent::__construct();
-        $this->database = $database;
+        $this->dataSource = $dataSource;
     }
 
     protected function configure(): void
@@ -34,7 +34,7 @@ class GetActivityCommand extends Command
 
         try {
             return $this->runActivityLoop();
-        } catch (\PDOException $e) {
+        } catch (\Exception $e) {
             $output->writeln("<error>Database error: {$e->getMessage()}</error>");
             return Command::FAILURE;
         }
@@ -64,30 +64,15 @@ class GetActivityCommand extends Command
 
     private function selectRandomActivity(): ?array
     {
-        $maxPriority = $this->getMaxPriority();
+        $maxPriority = $this->dataSource->getMaxPriority();
         $minRoll = mt_rand(0, (int)($maxPriority * 10)) / 10;
 
-        $statement = $this->database->prepare(
-            'SELECT activity, priority FROM t_activity 
-             WHERE priority >= :minRoll 
-             ORDER BY RAND() 
-             LIMIT 1'
-        );
-        $statement->execute(['minRoll' => $minRoll]);
-
-        $result = $statement->fetch();
+        $result = $this->dataSource->selectRandomActivity($minRoll);
         if ($result) {
             $result['minRoll'] = $minRoll;
         }
 
-        return $result ?: null;
-    }
-
-    private function getMaxPriority(): float
-    {
-        $statement = $this->database->query('SELECT MAX(priority) as max_priority FROM t_activity');
-        $result = $statement->fetch();
-        return (float)$result['max_priority'];
+        return $result;
     }
 
     private function displayActivity(array $activity): void
@@ -153,13 +138,7 @@ class GetActivityCommand extends Command
 
     private function updateActivityPriority(string $activityName, float $newPriority): void
     {
-        $statement = $this->database->prepare(
-            'UPDATE t_activity SET priority = :priority WHERE activity = :activity'
-        );
-        $statement->execute([
-            'priority' => $newPriority,
-            'activity' => $activityName
-        ]);
+        $this->dataSource->updatePriority($activityName, $newPriority);
     }
 
     private function displayPriorityChange(float $newPriority): void

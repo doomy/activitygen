@@ -6,18 +6,18 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use PDO;
+use App\DataSource\DataSourceInterface;
 
 class DeleteActivityCommand extends Command
 {
     protected static $defaultName = 'activity:delete';
 
-    private PDO $database;
+    private DataSourceInterface $dataSource;
 
-    public function __construct(PDO $database)
+    public function __construct(DataSourceInterface $dataSource)
     {
         parent::__construct();
-        $this->database = $database;
+        $this->dataSource = $dataSource;
     }
 
     protected function configure(): void
@@ -32,7 +32,7 @@ class DeleteActivityCommand extends Command
         $activityName = $input->getArgument('activity');
 
         try {
-            $deleted = $this->deleteActivity($activityName);
+            $deleted = $this->dataSource->deleteActivity($activityName);
             
             if ($deleted) {
                 $output->writeln("<info>Activity '{$activityName}' has been deleted</info>");
@@ -41,19 +41,10 @@ class DeleteActivityCommand extends Command
                 $output->writeln("<error>Activity '{$activityName}' not found</error>");
                 return Command::FAILURE;
             }
-        } catch (\PDOException $e) {
+        } catch (\Exception $e) {
             $output->writeln("<error>Database error: {$e->getMessage()}</error>");
             return Command::FAILURE;
         }
     }
 
-    private function deleteActivity(string $activityName): bool
-    {
-        $statement = $this->database->prepare(
-            'DELETE FROM t_activity WHERE activity = :activity'
-        );
-        $statement->execute(['activity' => $activityName]);
-        
-        return $statement->rowCount() > 0;
-    }
 }
