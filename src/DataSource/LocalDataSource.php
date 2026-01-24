@@ -150,6 +150,12 @@ class LocalDataSource implements DataSourceInterface
         $this->pdo->exec('DELETE FROM t_sync_queue');
     }
 
+    public function removeSyncQueueItem(int $id): void
+    {
+        $statement = $this->pdo->prepare('DELETE FROM t_sync_queue WHERE id = :id');
+        $statement->execute(['id' => $id]);
+    }
+
     public function hasPendingSync(): bool
     {
         $statement = $this->pdo->query('SELECT COUNT(*) as count FROM t_sync_queue');

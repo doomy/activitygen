@@ -27,28 +27,47 @@ class SyncManager
         $queue = $this->localDataSource->getSyncQueue();
         $successCount = 0;
         $failedCount = 0;
+        $skippedCount = 0;
         $errors = [];
+        $processedIds = [];
 
         foreach ($queue as $item) {
             try {
-                $this->processQueueItem($item);
-                $successCount++;
+                $result = $this->processQueueItem($item);
+                
+                if ($result === 'skipped') {
+                    $skippedCount++;
+                    $errors[] = [
+                        'operation' => $item['operation'],
+                        'activity' => $item['activity'],
+                        'error' => 'Activity no longer exists in remote database',
+                        'severity' => 'warning',
+                    ];
+                    // Still mark as processed to remove from queue
+                    $processedIds[] = $item['id'];
+                } else {
+                    $successCount++;
+                    $processedIds[] = $item['id'];
+                }
             } catch (\Exception $e) {
                 $failedCount++;
-                 $errors[] = [
+                $errors[] = [
                     'operation' => $item['operation'],
                     'activity' => $item['activity'],
                     'error' => $e->getMessage(),
+                    'severity' => 'error',
                 ];
             }
         }
 
-        if ($failedCount === 0) {
-            $this->localDataSource->clearSyncQueue();
+        // Remove successfully processed items (including skipped ones)
+        foreach ($processedIds as $id) {
+            $this->localDataSource->removeSyncQueueItem($id);
         }
 
         return [
             'success' => $successCount,
+            'skipped' => $skippedCount,
             'failed' => $failedCount,
             'errors' => $errors,
         ];
@@ -66,24 +85,26 @@ class SyncManager
         return $result;
     }
 
-    private function processQueueItem(array $item): void
+    private function processQueueItem(array $item): string
     {
         switch ($item['operation']) {
             case 'ADD_ACTIVITY':
                 $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
-                break;
+                return 'success';
 
             case 'DELETE_ACTIVITY':
                 $this->remoteDataSource->deleteActivity($item['activity']);
-                break;
+                return 'success';
 
             case 'PRIORITY_ADJUST':
                 $currentActivity = $this->remoteDataSource->getActivityByName($item['activity']);
-                if ($currentActivity) {
-                    $newPriority = max(0.1, round($currentActivity['priority'] + $item['delta'], 1));
-                    $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
+                if (!$currentActivity) {
+                    // Activity doesn't exist remotely - skip this operation
+                    return 'skipped';
                 }
-                break;
+                $newPriority = max(0.1, round($currentActivity['priority'] + $item['delta'], 1));
+                $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
+                return 'success';
 
             default:
                 throw new \RuntimeException("Unknown operation: {$item['operation']}");

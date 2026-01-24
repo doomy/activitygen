@@ -63,10 +63,18 @@ class SyncCommand extends Command
 
             $output->writeln("<info>Sync complete: {$result['success']} operations synced successfully</info>");
 
+            if ($result['skipped'] > 0) {
+                $output->writeln("<comment>{$result['skipped']} operations skipped (activities no longer exist remotely)</comment>");
+            }
+
             if ($result['failed'] > 0) {
                 $output->writeln("<error>{$result['failed']} operations failed</error>");
                 foreach ($result['errors'] as $error) {
-                    $output->writeln("<error>  - {$error['operation']} on '{$error['activity']}': {$error['error']}</error>");
+                    if ($error['severity'] === 'error') {
+                        $output->writeln("<error>  - {$error['operation']} on '{$error['activity']}': {$error['error']}</error>");
+                    } else {
+                        $output->writeln("<comment>  - {$error['operation']} on '{$error['activity']}': {$error['error']}</comment>");
+                    }
                 }
                 return Command::FAILURE;
             }
