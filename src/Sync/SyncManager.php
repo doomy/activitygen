@@ -10,6 +10,10 @@ class SyncManager
     private RemoteDataSource $remoteDataSource;
     private LocalDataSource $localDataSource;
 
+    // PDO error codes
+    private const SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION = '23000';
+    private const MYSQL_ERROR_DUPLICATE_ENTRY = 1062;
+
     public function __construct(RemoteDataSource $remoteDataSource, LocalDataSource $localDataSource)
     {
         $this->remoteDataSource = $remoteDataSource;
@@ -38,9 +42,7 @@ class SyncManager
                 if ($result === 'skipped') {
                     $skippedCount++;
                     // Provide more specific message based on operation
-                    $reason = $item['operation'] === 'ADD_ACTIVITY' 
-                        ? 'Activity already exists in remote database (possibly added by another client)'
-                        : 'Activity no longer exists in remote database';
+                    $reason = $this->getSkipReason($item['operation']);
                     $errors[] = [
                         'operation' => $item['operation'],
                         'activity' => $item['activity'],
@@ -128,24 +130,32 @@ class SyncManager
 
     private function isUniqueConstraintViolation(\PDOException $e): bool
     {
-        // Check SQLSTATE code (23000 is for integrity constraint violations)
-        if ($e->getCode() === '23000') {
+        // Check SQLSTATE code for integrity constraint violations
+        if ($e->getCode() === self::SQLSTATE_INTEGRITY_CONSTRAINT_VIOLATION) {
             return true;
         }
         
-        // Check specific error codes from errorInfo
+        // Check specific database error codes via errorInfo array
         $errorInfo = $e->errorInfo;
         if ($errorInfo !== null && isset($errorInfo[1])) {
-            // MySQL: 1062 = Duplicate entry
-            if ($errorInfo[1] === 1062) {
+            // MySQL-specific duplicate entry error code
+            if ($errorInfo[1] === self::MYSQL_ERROR_DUPLICATE_ENTRY) {
                 return true;
             }
         }
         
-        // Fallback: Check error message patterns (for SQLite and other edge cases)
+        // Fallback: Check error message patterns for SQLite and other databases
+        // This is a last resort when error codes are not available
         $message = $e->getMessage();
         return strpos($message, 'Duplicate entry') !== false ||
                strpos($message, 'UNIQUE constraint failed') !== false;
+    }
+
+    private function getSkipReason(string $operation): string
+    {
+        return $operation === 'ADD_ACTIVITY'
+            ? 'Activity already exists in remote database (possibly added by another client)'
+            : 'Activity no longer exists in remote database';
     }
 
     public function hasPendingSync(): bool
