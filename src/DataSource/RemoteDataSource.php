@@ -16,7 +16,13 @@ class RemoteDataSource implements DataSourceInterface
     public function getActivities(): array
     {
         $statement = $this->pdo->query('SELECT activity, priority FROM t_activity');
-        return $statement->fetchAll();
+        $activities = $statement->fetchAll();
+        
+        // Convert priority to float
+        return array_map(function($activity) {
+            $activity['priority'] = (float)$activity['priority'];
+            return $activity;
+        }, $activities);
     }
 
     public function getActivityByName(string $name): ?array
@@ -24,6 +30,11 @@ class RemoteDataSource implements DataSourceInterface
         $statement = $this->pdo->prepare('SELECT activity, priority FROM t_activity WHERE activity = :activity');
         $statement->execute(['activity' => $name]);
         $result = $statement->fetch();
+        
+        if ($result) {
+            $result['priority'] = (float)$result['priority'];
+        }
+        
         return $result ?: null;
     }
 
@@ -73,6 +84,11 @@ class RemoteDataSource implements DataSourceInterface
         );
         $statement->execute(['minRoll' => $minRoll]);
         $result = $statement->fetch();
+        
+        if ($result) {
+            $result['priority'] = (float)$result['priority'];
+        }
+        
         return $result ?: null;
     }
 }

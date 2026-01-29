@@ -4,15 +4,17 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-ActivityGen is a PHP console application that suggests activities using priority-weighted random selection. It's built with Symfony Console and runs in Docker containers. The application maintains a MySQL database of activities where users can adjust priorities in real-time based on their interest level.
+ActivityGen is a PHP application that suggests activities using priority-weighted random selection. It provides both a console interface and a web interface. It's built with Symfony Console (CLI) and Slim Framework (Web API), and runs in Docker containers. The application maintains a MySQL database of activities where users can adjust priorities in real-time based on their interest level.
 
 The application supports offline mode with automatic synchronization. When offline, it uses a local SQLite database and queues operations to sync when back online.
 
+Both interfaces share the same backend logic through a common service layer (ActivityService), ensuring consistent behavior across CLI and web.
+
 ## Development Commands
 
-### Running the Application
+### Running the Console Application
 
-Primary interface (uses Docker Compose):
+Primary CLI interface (uses Docker Compose):
 ```bash
 ./bin/ag
 ```
@@ -20,6 +22,26 @@ Primary interface (uses Docker Compose):
 Direct Docker Compose command:
 ```bash
 docker compose run --rm app php bin/console
+```
+
+### Running the Web Application
+
+Start the web application:
+```bash
+./bin/web
+```
+
+This starts both the nginx and PHP-FPM containers. The web application will be available at http://localhost:8080
+
+Stop the web application:
+```bash
+docker compose down
+```
+
+Rebuild web containers after code changes:
+```bash
+docker compose build web
+./bin/web
 ```
 
 ### Activity Management
@@ -102,11 +124,39 @@ docker compose run --rm app php bin/console <command>
 - Syncs remote data to local (full copy)
 - Replays queued operations to remote (delta-based)
 
+**Service Layer** (`src/Service/`)
+- `ActivityService`: Shared business logic for both CLI and web interfaces
+  - Provides priority-weighted random selection
+  - Handles priority adjustments with proper bounds checking
+  - Manages activity CRUD operations
+  - Encapsulates business rules (min priority, adjustment increment)
+
 **Commands** (`src/Command/`)
 - `GetActivityCommand`: Main interactive loop for activity selection with priority adjustments
 - `AddActivityCommand`: Inserts new activities with default priority (1.0) or an optional custom whole-number priority when provided
 - `DeleteActivityCommand`: Removes activities by name
 - `SyncCommand`: Manual sync trigger and status display
+- All commands now use ActivityService for business logic
+
+**Web API** (`public/api/`)
+- REST API built with Slim Framework
+- Endpoints:
+  - `GET /api/activities` - List all activities
+  - `GET /api/activities/suggest` - Get random activity suggestion
+  - `POST /api/activities` - Add new activity
+  - `DELETE /api/activities/{name}` - Delete activity
+  - `PATCH /api/activities/{name}/priority` - Adjust activity priority
+  - `GET /api/sync/status` - Get online/offline status and pending operations
+  - `POST /api/sync` - Manually trigger synchronization
+- Uses the same ActivityService and ConnectionManager as CLI
+
+**Web Frontend** (`public/`)
+- Single-page application with vanilla JavaScript
+- Two main views:
+  - **Suggestions View**: Display activity suggestions with thumbs up/down buttons for priority adjustment
+  - **Manage Activities View**: List, add, and delete activities
+- Real-time sync status indicator with auto-polling
+- Responsive design for mobile and desktop
 
 ### Selection Algorithm
 
@@ -165,14 +215,24 @@ Offline behavior:
 
 ## Code Organization
 
-- `bin/`: Entry scripts (console PHP script, ag shell wrapper)
+- `bin/`: Entry scripts (console PHP script, ag and web shell wrappers)
 - `src/`: Application source code with PSR-4 autoloading (`App\` namespace)
+- `src/Service/`: Shared business logic layer
 - `src/Command/`: Symfony Console command classes
 - `src/DataSource/`: Data access layer with interface and implementations
 - `src/Sync/`: Synchronization management
+- `public/`: Web application files
+  - `index.html`: Main HTML page
+  - `app.js`: Frontend JavaScript application
+  - `styles.css`: CSS styles
+  - `api/index.php`: REST API entry point
 - `data/`: Local SQLite database (not version controlled except .gitkeep)
 - `env/`: Environment configuration files (not version controlled)
 - `vendor/`: Composer dependencies
+- `nginx.conf`: Nginx configuration for web application
+- `Dockerfile`: CLI application container
+- `Dockerfile.web`: PHP-FPM container for web application
+- `docker-compose.yml`: Multi-container orchestration
 
 ## Requirements
 

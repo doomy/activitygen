@@ -6,21 +6,19 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use App\DataSource\DataSourceInterface;
+use App\Service\ActivityService;
 
 class GetActivityCommand extends Command
 {
     protected static $defaultName = 'activity:get';
 
-    private const MINIMUM_PRIORITY = 0.1;
-    private const PRIORITY_ADJUSTMENT = 0.1;
-
-    private DataSourceInterface $dataSource;
+    private ActivityService $activityService;
     private OutputInterface $output;
 
     public function __construct(DataSourceInterface $dataSource)
     {
         parent::__construct();
-        $this->dataSource = $dataSource;
+        $this->activityService = new ActivityService($dataSource);
     }
 
     protected function configure(): void
@@ -64,15 +62,7 @@ class GetActivityCommand extends Command
 
     private function selectRandomActivity(): ?array
     {
-        $maxPriority = $this->dataSource->getMaxPriority();
-        $minRoll = mt_rand(0, (int)($maxPriority * 10)) / 10;
-
-        $result = $this->dataSource->selectRandomActivity($minRoll);
-        if ($result) {
-            $result['minRoll'] = $minRoll;
-        }
-
-        return $result;
+        return $this->activityService->getRandomSuggestion();
     }
 
     private function displayActivity(array $activity): void
@@ -103,14 +93,13 @@ class GetActivityCommand extends Command
 
     private function handlePriorityAdjustment(string $userInput, array $activity): void
     {
-        $adjustment = $this->getPriorityAdjustment($userInput);
+        $delta = $this->getPriorityAdjustment($userInput);
 
-        if ($adjustment === 0) {
+        if ($delta === 0) {
             return;
         }
 
-        $newPriority = $this->calculateNewPriority($activity['priority'], $adjustment);
-        $this->updateActivityPriority($activity['activity'], $newPriority);
+        $newPriority = $this->activityService->adjustPriority($activity['activity'], $delta);
         $this->displayPriorityChange($newPriority);
         
         // Wait for another keystroke before continuing
@@ -120,25 +109,14 @@ class GetActivityCommand extends Command
     private function getPriorityAdjustment(string $userInput): float
     {
         if ($userInput === '+' || $userInput === '=') {
-            return self::PRIORITY_ADJUSTMENT;
+            return ActivityService::getPriorityAdjustment();
         }
 
         if ($userInput === '-' || $userInput === '_') {
-            return -self::PRIORITY_ADJUSTMENT;
+            return -ActivityService::getPriorityAdjustment();
         }
 
         return 0;
-    }
-
-    private function calculateNewPriority(float $currentPriority, float $adjustment): float
-    {
-        $newPriority = $currentPriority + $adjustment;
-        return max(self::MINIMUM_PRIORITY, round($newPriority, 1));
-    }
-
-    private function updateActivityPriority(string $activityName, float $newPriority): void
-    {
-        $this->dataSource->updatePriority($activityName, $newPriority);
     }
 
     private function displayPriorityChange(float $newPriority): void

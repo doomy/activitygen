@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ActivityGen</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ActivityGen</h1>
+            <div class="sync-status">
+                <span id="connectionStatus" class="status-badge">●</span>
+                <span id="pendingCount"></span>
+                <button id="syncButton" class="btn-sync">Sync</button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab active" data-view="suggest">Suggestions</button>
+            <button class="tab" data-view="manage">Manage Activities</button>
+        </nav>
+
+        <!-- Suggestion View -->
+        <div id="suggestView" class="view active">
+            <div class="suggestion-card">
+                <div id="suggestionContent">
+                    <p class="placeholder">Click "Get Suggestion" to start</p>
+                </div>
+                <div class="suggestion-actions">
+                    <button id="btnThumbsDown" class="btn-action btn-down" disabled>
+                        <span class="icon">👎</span>
+                        <span class="label">-0.1</span>
+                    </button>
+                    <button id="btnNext" class="btn-action btn-next">
+                        <span class="icon">🔄</span>
+                        <span class="label">Next</span>
+                    </button>
+                    <button id="btnThumbsUp" class="btn-action btn-up" disabled>
+                        <span class="icon">👍</span>
+                        <span class="label">+0.1</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manage View -->
+        <div id="manageView" class="view">
+            <div class="manage-header">
+                <h2>Activities</h2>
+                <button id="btnShowAddForm" class="btn-primary">+ Add Activity</button>
+            </div>
+
+            <div id="addFormContainer" class="add-form hidden">
+                <input type="text" id="newActivityName" placeholder="Activity name" />
+                <input type="number" id="newActivityPriority" placeholder="Priority (default: 1.0)" step="0.1" min="0.1" />
+                <button id="btnAddActivity" class="btn-primary">Add</button>
+                <button id="btnCancelAdd" class="btn-secondary">Cancel</button>
+            </div>
+
+            <div id="activitiesList" class="activities-list">
+                <p class="loading">Loading activities...</p>
+            </div>
+        </div>
+
+        <div id="notification" class="notification hidden"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
