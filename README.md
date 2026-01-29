@@ -1,22 +1,24 @@
 # ActivityGen
 
-A PHP console application that helps you choose activities using a priority-based random selection system.
+A priority-weighted activity suggestion system with both CLI and web interfaces.
 
 ## What It Does
 
-ActivityGen retrieves random activities from a MySQL database, weighted by their priority scores. Activities with higher priority values have a better chance of being selected. After each suggestion, you can adjust the activity's priority up or down based on your interest, creating a personalized activity recommendation system that learns from your preferences over time.
+ActivityGen helps you choose activities using a priority-based random selection system. Activities with higher priority values have a better chance of being selected. You can adjust priorities in real-time based on your interest, creating a personalized recommendation system that learns from your preferences.
 
 ## Features
 
+- **Dual Interface**: Use either command-line or web browser
 - **Priority-weighted selection**: Activities with higher priorities are more likely to be chosen
-- **Interactive feedback**: Adjust activity priorities in real-time with keyboard controls
-- **Continuous loop**: Keep getting suggestions until you find something you want to do
+- **Real-time adjustments**: Adjust activity priorities on-the-fly
+- **Offline support**: Works offline with automatic sync when reconnected
+- **Shared backend**: Both interfaces use the same business logic
 - **Docker support**: Easy setup and execution with Docker Compose
 
 ## Requirements
 
-- Docker and Docker Compose (for containerized execution)
-- MySQL database with an `t_activity` table containing `activity` and `priority` columns
+- Docker and Docker Compose
+- MySQL database (for remote sync)
 
 ## Installation
 
@@ -25,88 +27,96 @@ ActivityGen retrieves random activities from a MySQL database, weighted by their
    ```bash
    composer install
    ```
-3. Configure database connection in `env/.db`:
+3. Configure database connection:
+   ```bash
+   cp env/.db.sample env/.db
+   # Edit env/.db with your database credentials
    ```
-   DB_HOST=your_host
-   DB_DATABASE=your_database
-   DB_USERNAME=your_username
-   DB_PASSWORD=your_password
+4. Build Docker containers:
+   ```bash
+   docker compose build
+   docker compose build web
    ```
 
 ## Usage
 
-### Getting Activity Suggestions
+### Web Interface
 
-Run the application using the provided shell script:
+Start the web application:
+```bash
+./bin/web
+```
 
+Access at: **http://localhost:8080**
+
+The web interface provides:
+- **Suggestions Tab**: Get activity suggestions with 👍/👎 buttons to adjust priorities
+- **Manage Activities Tab**: View, add, and delete activities
+- **Sync Status**: Real-time online/offline status indicator
+
+Stop the web application:
+```bash
+docker compose down
+```
+
+### Command Line Interface
+
+Get activity suggestions:
 ```bash
 ./bin/ag
 ```
 
-Or directly with Docker Compose:
-
-```bash
-docker-compose run --rm app php bin/console
-```
-
-### Adding New Activities
-
-Add a new activity with default priority (1.0):
-
-```bash
-./bin/ag activity:add "Your activity name"
-```
-
-Add a new activity with a custom starting priority (whole number):
-
-```bash
-./bin/ag activity:add "Your activity name" 3
-```
-
 Or with Docker Compose:
-
 ```bash
-docker-compose run --rm app php bin/console activity:add "Your activity name"
+docker compose run --rm app php bin/console
 ```
 
-Or with a custom starting priority using Docker Compose:
+### CLI Commands
 
+Add activity:
 ```bash
-docker-compose run --rm app php bin/console activity:add "Your activity name" 3
+./bin/ag activity:add "Activity name"        # Default priority (1.0)
+./bin/ag activity:add "Activity name" 3       # Custom priority
 ```
 
-### Deleting Activities
-
-Delete an activity from the database:
-
+Delete activity:
 ```bash
-./bin/ag activity:delete "Your activity name"
+./bin/ag activity:delete "Activity name"
 ```
 
-Or with Docker Compose:
-
+Manual sync:
 ```bash
-docker-compose run --rm app php bin/console activity:delete "Your activity name"
+./bin/ag sync
 ```
 
-### Controls
+### CLI Controls
 
 When an activity is displayed:
 - **+** or **=** - Increase priority by 0.1
 - **-** or **_** - Decrease priority by 0.1 (minimum 0.1)
-- **Q** or **Enter** - Exit the application
-- **Any other key** - Get next activity suggestion
+- **Q** or **Enter** - Exit
+- **Any other key** - Next suggestion
+
+## Architecture
+
+- **Backend**: PHP with shared service layer (ActivityService)
+- **CLI**: Symfony Console
+- **Web API**: Slim Framework (REST API)
+- **Frontend**: Vanilla JavaScript single-page application
+- **Database**: MySQL (remote) + SQLite (local offline cache)
+- **Deployment**: Docker Compose with nginx and PHP-FPM
 
 ## Database Schema
 
-The application expects a MySQL table with the following structure:
-
+**Remote (MySQL):**
 ```sql
 CREATE TABLE t_activity (
     activity VARCHAR(255) PRIMARY KEY,
     priority DECIMAL(3,1) DEFAULT 1.0
 );
 ```
+
+**Local (SQLite):** Automatically created for offline support
 
 ## How It Works
 

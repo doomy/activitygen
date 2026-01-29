@@ -7,6 +7,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use App\DataSource\DataSourceInterface;
+use App\Service\ActivityService;
 
 class AddActivityCommand extends Command
 {
@@ -14,12 +15,12 @@ class AddActivityCommand extends Command
 
     private const DEFAULT_PRIORITY = 1.0;
 
-    private DataSourceInterface $dataSource;
+    private ActivityService $activityService;
 
     public function __construct(DataSourceInterface $dataSource)
     {
         parent::__construct();
-        $this->dataSource = $dataSource;
+        $this->activityService = new ActivityService($dataSource);
     }
 
     protected function configure(): void
@@ -37,7 +38,7 @@ class AddActivityCommand extends Command
         $priority = $rating !== null ? (float) $rating : self::DEFAULT_PRIORITY;
 
         try {
-            $this->dataSource->addActivity($activityName, $priority);
+            $this->activityService->addActivity($activityName, $priority);
             $output->writeln("<info>Activity '{$activityName}' added with priority {$priority}</info>");
             return Command::SUCCESS;
         } catch (\Exception $e) {

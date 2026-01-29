@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Start the web application
+docker compose up -d nginx web
+
+echo "Web application started!"
+echo "Access it at: http://localhost:8080"
+echo ""
+echo "To stop the web application, run:"
+echo "  docker compose down"
