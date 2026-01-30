@@ -9,7 +9,11 @@ class ActivityGenApp {
         this.initElements();
         this.attachEventListeners();
         this.setupVisibilityChangeHandler();
-        this.startSyncStatusPolling();
+        
+        // Only start polling if the page is visible
+        if (!document.hidden) {
+            this.startSyncStatusPolling();
+        }
     }
 
     initElements() {
