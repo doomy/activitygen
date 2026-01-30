@@ -4,9 +4,11 @@ class ActivityGenApp {
     constructor() {
         this.currentSuggestion = null;
         this.syncStatusInterval = null;
+        this.isPollingActive = false;
 
         this.initElements();
         this.attachEventListeners();
+        this.setupVisibilityChangeHandler();
         this.startSyncStatusPolling();
     }
 
@@ -294,9 +296,32 @@ class ActivityGenApp {
         }
     }
 
+    setupVisibilityChangeHandler() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.stopSyncStatusPolling();
+            } else {
+                this.startSyncStatusPolling();
+            }
+        });
+    }
+
     startSyncStatusPolling() {
+        if (this.isPollingActive) {
+            return;
+        }
+        
+        this.isPollingActive = true;
         this.updateSyncStatus();
         this.syncStatusInterval = setInterval(() => this.updateSyncStatus(), 5000);
+    }
+
+    stopSyncStatusPolling() {
+        if (this.syncStatusInterval) {
+            clearInterval(this.syncStatusInterval);
+            this.syncStatusInterval = null;
+        }
+        this.isPollingActive = false;
     }
 
     showNotification(message, type = 'success') {
