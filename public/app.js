@@ -140,9 +140,7 @@ class ActivityGenApp {
                     `Priority ${delta > 0 ? 'increased' : 'decreased'} to ${result.data.priority.toFixed(1)}`,
                     'success',
                 );
-                // Update current suggestion with new priority
-                this.currentSuggestion.priority = result.data.priority;
-                this.displaySuggestion(this.currentSuggestion);
+                this.getNextSuggestion();
             } else {
                 this.showNotification(result.error, 'error');
             }
