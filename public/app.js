@@ -105,6 +105,7 @@ class ActivityGenApp {
         } catch (error) {
             this.showNotification('Failed to get suggestion', 'error');
             console.error('Error getting suggestion:', error);
+            this.enableActionButtons(false);
         }
     }
 
@@ -127,6 +128,7 @@ class ActivityGenApp {
 
     enableActionButtons(enabled) {
         this.btnThumbsDown.disabled = !enabled;
+        this.btnNext.disabled = !enabled;
         this.btnThumbsUp.disabled = !enabled;
     }
 
