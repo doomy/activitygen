@@ -86,6 +86,9 @@ class ActivityGenApp {
     }
 
     async getNextSuggestion() {
+        this.showLoadingState();
+        this.enableActionButtons(false);
+
         try {
             const response = await fetch(`${API_BASE}/activities/suggest`);
             const result = await response.json();
@@ -112,6 +115,13 @@ class ActivityGenApp {
                 <div>Priority: ${suggestion.priority.toFixed(1)}</div>
                 <div>Min Roll: ${suggestion.minRoll.toFixed(1)}</div>
             </div>
+        `;
+    }
+
+    showLoadingState() {
+        this.suggestionContent.innerHTML = `
+            <div class="spinner"></div>
+            <div class="loading-text">Finding next activity...</div>
         `;
     }
 
