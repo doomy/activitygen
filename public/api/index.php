@@ -142,7 +142,7 @@ $app->delete('/activities/{name:.+}', function (Request $request, Response $resp
 // PATCH /activities/{name}/priority - Update activity priority
 $app->patch('/activities/{name:.+}/priority', function (Request $request, Response $response, array $args) use ($activityService) {
     try {
-        $name = urldecode($args['name']);
+        $name = rawurldecode($args['name']);
         $body = $request->getParsedBody();
         $delta = isset($body['delta']) ? (float)$body['delta'] : null;
 
