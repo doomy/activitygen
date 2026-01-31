@@ -87,7 +87,7 @@ class ActivityGenApp {
 
     async getNextSuggestion() {
         this.showLoadingState();
-        this.enableActionButtons(false);
+        this.setActionButtonsEnabled(false);
 
         try {
             const response = await fetch(`${API_BASE}/activities/suggest`);
@@ -96,17 +96,17 @@ class ActivityGenApp {
             if (result.success) {
                 this.currentSuggestion = result.data;
                 this.displaySuggestion(result.data);
-                this.enableActionButtons(true);
+                this.setActionButtonsEnabled(true);
             } else {
                 this.showNotification(result.error, 'error');
                 this.currentSuggestion = null;
-                this.enableActionButtons(false);
+                this.setActionButtonsEnabled(false);
                 this.btnNext.disabled = false;
             }
         } catch (error) {
             this.showNotification('Failed to get suggestion', 'error');
             console.error('Error getting suggestion:', error);
-            this.enableActionButtons(false);
+            this.setActionButtonsEnabled(false);
             this.btnNext.disabled = false;
         }
     }
@@ -128,7 +128,7 @@ class ActivityGenApp {
         `;
     }
 
-    enableActionButtons(enabled) {
+    setActionButtonsEnabled(enabled) {
         this.btnThumbsDown.disabled = !enabled;
         this.btnNext.disabled = !enabled;
         this.btnThumbsUp.disabled = !enabled;
