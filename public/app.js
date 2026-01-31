@@ -101,11 +101,13 @@ class ActivityGenApp {
                 this.showNotification(result.error, 'error');
                 this.currentSuggestion = null;
                 this.enableActionButtons(false);
+                this.btnNext.disabled = false;
             }
         } catch (error) {
             this.showNotification('Failed to get suggestion', 'error');
             console.error('Error getting suggestion:', error);
             this.enableActionButtons(false);
+            this.btnNext.disabled = false;
         }
     }
 
