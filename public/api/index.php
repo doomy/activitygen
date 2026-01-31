@@ -117,7 +117,7 @@ $app->post('/activities', function (Request $request, Response $response) use ($
 // DELETE /activities/{name} - Delete an activity
 $app->delete('/activities/{name:.+}', function (Request $request, Response $response, array $args) use ($activityService) {
     try {
-        $name = urldecode($args['name']);
+        $name = rawurldecode($args['name']);
         $deleted = $activityService->deleteActivity($name);
 
         if (!$deleted) {
