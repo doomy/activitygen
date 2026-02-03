@@ -11,11 +11,14 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /app
 
 # Install dependencies
-COPY composer.json composer.lock* ./
-RUN composer install --no-dev --optimize-autoloader || composer install --no-dev
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader
 
 # Copy application code
 COPY . .
+
+# Generate autoloader
+RUN composer dump-autoload --optimize --no-dev
 
 EXPOSE 9000
 
