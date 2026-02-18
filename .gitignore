@@ -1,5 +1,6 @@
 /vendor/
 composer.lock
 env/.db
+env/.web
 .idea
 data/local.db
