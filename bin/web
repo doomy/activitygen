@@ -1,10 +1,21 @@
 #!/bin/bash
 
-# Start the web application
+if [ -f env/.web ]; then
+  set -a
+  . env/.web
+  set +a
+fi
+
+if [ -n "$1" ]; then
+  ACTIVITYGEN_WEB_PORT="$1"
+fi
+
+ACTIVITYGEN_WEB_PORT="${ACTIVITYGEN_WEB_PORT:-8080}"
+
 docker compose up -d nginx web
 
 echo "Web application started!"
-echo "Access it at: http://localhost:8080"
+echo "Access it at: http://localhost:${ACTIVITYGEN_WEB_PORT}"
 echo ""
 echo "To stop the web application, run:"
 echo "  docker compose down"
