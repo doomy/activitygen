@@ -31,7 +31,15 @@ Start the web application:
 ./bin/web
 ```
 
-This starts both the nginx and PHP-FPM containers. The web application will be available at http://localhost:8080
+To avoid port conflicts when running multiple stacks, override the host port:
+```bash
+./bin/web 8081
+# or
+cp env/.web.sample env/.web
+# edit env/.web and set ACTIVITYGEN_WEB_PORT
+```
+
+This starts both the nginx and PHP-FPM containers. The web application will be available at http://localhost:8080 (or your overridden port)
 
 Stop the web application:
 ```bash

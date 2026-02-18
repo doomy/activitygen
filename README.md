@@ -47,7 +47,15 @@ Start the web application:
 ./bin/web
 ```
 
-Access at: **http://localhost:8080**
+To avoid port conflicts when running multiple stacks, override the host port:
+```bash
+./bin/web 8081
+# or
+cp env/.web.sample env/.web
+# edit env/.web and set ACTIVITYGEN_WEB_PORT
+```
+
+Access at: **http://localhost:8080** (or your overridden port)
 
 The web interface provides:
 - **Suggestions Tab**: Get activity suggestions with 👍/👎 buttons to adjust priorities
