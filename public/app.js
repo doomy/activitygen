@@ -134,6 +134,13 @@ class ActivityGenApp {
         this.btnThumbsUp.disabled = !enabled;
     }
 
+    resetToInitialState() {
+        this.currentSuggestion = null;
+        this.suggestionContent.innerHTML = '<p class="placeholder">Click "Get Suggestion" to start</p>';
+        this.setActionButtonsEnabled(false);
+        this.btnNext.disabled = false;
+    }
+
     async adjustPriority(delta) {
         if (!this.currentSuggestion) return;
 
@@ -154,7 +161,11 @@ class ActivityGenApp {
                     `Priority ${delta > 0 ? 'increased' : 'decreased'} to ${result.data.priority.toFixed(1)}`,
                     'success',
                 );
-                this.getNextSuggestion();
+                if (delta > 0) {
+                    this.resetToInitialState();
+                } else {
+                    this.getNextSuggestion();
+                }
             } else {
                 this.showNotification(result.error, 'error');
             }
