@@ -43,10 +43,34 @@ function jsonResponse(Response $response, array $data, int $status = 200): Respo
         ->withStatus($status);
 }
 
+// Helper to extract projectId from query params
+function getProjectId(Request $request): int
+{
+    $params = $request->getQueryParams();
+    return isset($params['projectId']) ? (int) $params['projectId'] : 1;
+}
+
+// GET /projects - List all projects
+$app->get('/projects', function (Request $request, Response $response) use ($activityService) {
+    try {
+        $projects = $activityService->getProjects();
+        return jsonResponse($response, [
+            'success' => true,
+            'data' => $projects,
+        ]);
+    } catch (\Exception $e) {
+        return jsonResponse($response, [
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
 // GET /activities - List all activities
 $app->get('/activities', function (Request $request, Response $response) use ($activityService) {
     try {
-        $activities = $activityService->getAllActivities();
+        $projectId = getProjectId($request);
+        $activities = $activityService->getAllActivities($projectId);
         return jsonResponse($response, [
             'success' => true,
             'data' => $activities,
@@ -62,8 +86,9 @@ $app->get('/activities', function (Request $request, Response $response) use ($a
 // GET /activities/suggest - Get a random activity suggestion
 $app->get('/activities/suggest', function (Request $request, Response $response) use ($activityService) {
     try {
-        $suggestion = $activityService->getRandomSuggestion();
-        
+        $projectId = getProjectId($request);
+        $suggestion = $activityService->getRandomSuggestion($projectId);
+
         if (!$suggestion) {
             return jsonResponse($response, [
                 'success' => false,
@@ -88,7 +113,8 @@ $app->post('/activities', function (Request $request, Response $response) use ($
     try {
         $body = $request->getParsedBody();
         $name = $body['name'] ?? null;
-        $priority = isset($body['priority']) ? (float)$body['priority'] : 1.0;
+        $priority = isset($body['priority']) ? (float) $body['priority'] : 1.0;
+        $projectId = isset($body['projectId']) ? (int) $body['projectId'] : 1;
 
         if (!$name || trim($name) === '') {
             return jsonResponse($response, [
@@ -97,7 +123,7 @@ $app->post('/activities', function (Request $request, Response $response) use ($
             ], 400);
         }
 
-        $activityService->addActivity(trim($name), $priority);
+        $activityService->addActivity(trim($name), $priority, $projectId);
 
         return jsonResponse($response, [
             'success' => true,
@@ -118,7 +144,8 @@ $app->post('/activities', function (Request $request, Response $response) use ($
 $app->delete('/activities/{name:.+}', function (Request $request, Response $response, array $args) use ($activityService) {
     try {
         $name = rawurldecode($args['name']);
-        $deleted = $activityService->deleteActivity($name);
+        $projectId = getProjectId($request);
+        $deleted = $activityService->deleteActivity($name, $projectId);
 
         if (!$deleted) {
             return jsonResponse($response, [
@@ -144,7 +171,8 @@ $app->patch('/activities/{name:.+}/priority', function (Request $request, Respon
     try {
         $name = rawurldecode($args['name']);
         $body = $request->getParsedBody();
-        $delta = isset($body['delta']) ? (float)$body['delta'] : null;
+        $delta = isset($body['delta']) ? (float) $body['delta'] : null;
+        $projectId = isset($body['projectId']) ? (int) $body['projectId'] : 1;
 
         if ($delta === null) {
             return jsonResponse($response, [
@@ -153,7 +181,7 @@ $app->patch('/activities/{name:.+}/priority', function (Request $request, Respon
             ], 400);
         }
 
-        $newPriority = $activityService->adjustPriority($name, $delta);
+        $newPriority = $activityService->adjustPriority($name, $delta, $projectId);
 
         return jsonResponse($response, [
             'success' => true,

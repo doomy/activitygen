@@ -1,0 +1,38 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Dibi\Connection;
+use Doomy\EntityCache\EntityCache;
+use Doomy\Migrator\Migrator;
+use Doomy\Ormtopus\DataEntityManager;
+use Doomy\Repository\EntityFactory;
+use Doomy\Repository\Helper\DbHelper;
+use Doomy\Repository\RepoFactory;
+use Doomy\Repository\TableDefinition\ColumnTypeMapper;
+use Doomy\Repository\TableDefinition\TableDefinitionFactory;
+
+$connection = new Connection([
+    'driver' => 'mysqli',
+    'host' => getenv('DB_HOST'),
+    'username' => getenv('DB_USERNAME'),
+    'password' => getenv('DB_PASSWORD'),
+    'database' => getenv('DB_DATABASE'),
+]);
+
+$columnTypeMapper = new ColumnTypeMapper();
+$tableDefinitionFactory = new TableDefinitionFactory($columnTypeMapper);
+$dbHelper = new DbHelper($columnTypeMapper);
+$entityFactory = new EntityFactory($tableDefinitionFactory);
+
+$repoFactory = new RepoFactory($connection, $entityFactory, $dbHelper, $tableDefinitionFactory);
+$data = new DataEntityManager($repoFactory, new EntityCache());
+
+$migrator = new Migrator($connection, $data, [
+    'migrations_directory' => __DIR__ . '/../migrations',
+], $tableDefinitionFactory, $dbHelper);
+
+echo "Running migrations...\n";
+$migrator->migrate();
+echo $migrator->getOutput();
