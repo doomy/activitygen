@@ -4,6 +4,7 @@ namespace App\Command;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use App\DataSource\DataSourceInterface;
 use App\Service\ActivityService;
@@ -14,6 +15,7 @@ class GetActivityCommand extends Command
 
     private ActivityService $activityService;
     private OutputInterface $output;
+    private int $projectId = 1;
 
     public function __construct(DataSourceInterface $dataSource)
     {
@@ -23,7 +25,9 @@ class GetActivityCommand extends Command
 
     protected function configure(): void
     {
-        $this->setDescription('Get a random activity based on priority');
+        $this
+            ->setDescription('Get a random activity based on priority')
+            ->addOption('project', 'p', InputOption::VALUE_OPTIONAL, 'Project name', 'General');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -31,6 +35,14 @@ class GetActivityCommand extends Command
         $this->output = $output;
 
         try {
+            $projectName = $input->getOption('project');
+            $project = $this->activityService->getProjectByName($projectName);
+            if (!$project) {
+                $output->writeln("<error>Project '{$projectName}' not found</error>");
+                return Command::FAILURE;
+            }
+            $this->projectId = (int) $project['id'];
+
             return $this->runActivityLoop();
         } catch (\Exception $e) {
             $output->writeln("<error>Database error: {$e->getMessage()}</error>");
@@ -62,7 +74,7 @@ class GetActivityCommand extends Command
 
     private function selectRandomActivity(): ?array
     {
-        return $this->activityService->getRandomSuggestion();
+        return $this->activityService->getRandomSuggestion($this->projectId);
     }
 
     private function displayActivity(array $activity): void
@@ -99,7 +111,7 @@ class GetActivityCommand extends Command
             return;
         }
 
-        $newPriority = $this->activityService->adjustPriority($activity['activity'], $delta);
+        $newPriority = $this->activityService->adjustPriority($activity['activity'], $delta, $this->projectId);
         $this->displayPriorityChange($newPriority);
         
         // Wait for another keystroke before continuing

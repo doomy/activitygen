@@ -3,14 +3,15 @@ const API_BASE = '/api';
 class ActivityGenApp {
     constructor() {
         this.currentSuggestion = null;
+        this.currentProjectId = 1;
         this.syncStatusInterval = null;
         this.isPollingActive = false;
 
         this.initElements();
         this.attachEventListeners();
         this.setupVisibilityChangeHandler();
-        
-        // Only start polling if the page is visible
+        this.loadProjects();
+
         if (!document.hidden) {
             this.startSyncStatusPolling();
         }
@@ -38,6 +39,9 @@ class ActivityGenApp {
         this.btnAddActivity = document.getElementById('btnAddActivity');
         this.btnCancelAdd = document.getElementById('btnCancelAdd');
         this.activitiesList = document.getElementById('activitiesList');
+
+        // Project selector
+        this.projectSelect = document.getElementById('projectSelect');
 
         // Sync status
         this.connectionStatus = document.getElementById('connectionStatus');
@@ -67,8 +71,37 @@ class ActivityGenApp {
             if (e.key === 'Enter') this.addActivity();
         });
 
+        // Project selector
+        this.projectSelect.addEventListener('change', () => this.onProjectChange());
+
         // Sync button
         this.syncButton.addEventListener('click', () => this.manualSync());
+    }
+
+    async loadProjects() {
+        try {
+            const response = await fetch(`${API_BASE}/projects`);
+            const result = await response.json();
+
+            if (result.success) {
+                this.projectSelect.innerHTML = result.data
+                    .map(
+                        p => `<option value="${p.id}" ${p.id == 1 ? 'selected' : ''}>${this.escapeHtml(p.name)}</option>`,
+                    )
+                    .join('');
+            }
+        } catch (error) {
+            console.error('Error loading projects:', error);
+        }
+    }
+
+    onProjectChange() {
+        this.currentProjectId = parseInt(this.projectSelect.value, 10);
+        this.resetToInitialState();
+
+        if (document.querySelector('.tab[data-view="manage"].active')) {
+            this.loadActivities();
+        }
     }
 
     switchTab(viewName) {
@@ -90,7 +123,7 @@ class ActivityGenApp {
         this.setActionButtonsEnabled(false);
 
         try {
-            const response = await fetch(`${API_BASE}/activities/suggest`);
+            const response = await fetch(`${API_BASE}/activities/suggest?projectId=${this.currentProjectId}`);
             const result = await response.json();
 
             if (result.success) {
@@ -150,7 +183,7 @@ class ActivityGenApp {
                 {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ delta }),
+                    body: JSON.stringify({ delta, projectId: this.currentProjectId }),
                 },
             );
 
@@ -179,7 +212,7 @@ class ActivityGenApp {
         try {
             this.activitiesList.innerHTML = '<p class="loading">Loading activities...</p>';
 
-            const response = await fetch(`${API_BASE}/activities`);
+            const response = await fetch(`${API_BASE}/activities?projectId=${this.currentProjectId}`);
             const result = await response.json();
 
             if (result.success) {
@@ -243,7 +276,7 @@ class ActivityGenApp {
             const response = await fetch(`${API_BASE}/activities`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, priority }),
+                body: JSON.stringify({ name, priority, projectId: this.currentProjectId }),
             });
 
             const result = await response.json();
@@ -265,7 +298,7 @@ class ActivityGenApp {
         if (!confirm(`Delete activity "${name}"?`)) return;
 
         try {
-            const response = await fetch(`${API_BASE}/activities/${encodeURIComponent(name)}`, {
+            const response = await fetch(`${API_BASE}/activities/${encodeURIComponent(name)}?projectId=${this.currentProjectId}`, {
                 method: 'DELETE',
             });
 
