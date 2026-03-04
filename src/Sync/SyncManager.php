@@ -23,7 +23,6 @@ class SyncManager
     public function syncFromRemote(): void
     {
         $projects = $this->remoteDataSource->getProjects();
-        $this->localDataSource->replaceAllProjects($projects);
 
         $allActivities = [];
         foreach ($projects as $project) {
@@ -33,7 +32,8 @@ class SyncManager
                 $allActivities[] = $activity;
             }
         }
-        $this->localDataSource->replaceAllActivities($allActivities);
+
+        $this->localDataSource->replaceAllProjectsAndActivities($projects, $allActivities);
     }
 
     public function syncToRemote(): array
