@@ -271,6 +271,43 @@ class LocalDataSource implements DataSourceInterface
         }
     }
 
+    public function replaceAllProjectsAndActivities(array $projects, array $activities): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $this->pdo->exec('DELETE FROM t_activity');
+            $this->pdo->exec('DELETE FROM t_project');
+
+            $projectStatement = $this->pdo->prepare(
+                'INSERT INTO t_project (id, name) VALUES (:id, :name)',
+            );
+
+            foreach ($projects as $project) {
+                $projectStatement->execute([
+                    'id' => $project['id'],
+                    'name' => $project['name'],
+                ]);
+            }
+
+            $activityStatement = $this->pdo->prepare(
+                'INSERT INTO t_activity (activity, priority, project_id) VALUES (:activity, :priority, :projectId)',
+            );
+
+            foreach ($activities as $activity) {
+                $activityStatement->execute([
+                    'activity' => $activity['activity'],
+                    'priority' => $activity['priority'],
+                    'projectId' => $activity['project_id'],
+                ]);
+            }
+
+            $this->pdo->commit();
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
     public function getPdo(): PDO
     {
         return $this->pdo;
