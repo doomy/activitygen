@@ -43,10 +43,47 @@ function jsonResponse(Response $response, array $data, int $status = 200): Respo
         ->withStatus($status);
 }
 
+// Helper to validate a value is a positive integer
+function parsePositiveInt(mixed $value): ?int
+{
+    $result = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    return $result !== false ? $result : null;
+}
+
+// Helper to extract and validate projectId from query params
+function getProjectId(Request $request): ?int
+{
+    $params = $request->getQueryParams();
+    if (!isset($params['projectId'])) {
+        return 1;
+    }
+    return parsePositiveInt($params['projectId']);
+}
+
+// GET /projects - List all projects
+$app->get('/projects', function (Request $request, Response $response) use ($activityService) {
+    try {
+        $projects = $activityService->getProjects();
+        return jsonResponse($response, [
+            'success' => true,
+            'data' => $projects,
+        ]);
+    } catch (\Exception $e) {
+        return jsonResponse($response, [
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
 // GET /activities - List all activities
 $app->get('/activities', function (Request $request, Response $response) use ($activityService) {
     try {
-        $activities = $activityService->getAllActivities();
+        $projectId = getProjectId($request);
+        if ($projectId === null) {
+            return jsonResponse($response, ['success' => false, 'error' => 'Invalid projectId: must be a positive integer'], 400);
+        }
+        $activities = $activityService->getAllActivities($projectId);
         return jsonResponse($response, [
             'success' => true,
             'data' => $activities,
@@ -62,8 +99,12 @@ $app->get('/activities', function (Request $request, Response $response) use ($a
 // GET /activities/suggest - Get a random activity suggestion
 $app->get('/activities/suggest', function (Request $request, Response $response) use ($activityService) {
     try {
-        $suggestion = $activityService->getRandomSuggestion();
-        
+        $projectId = getProjectId($request);
+        if ($projectId === null) {
+            return jsonResponse($response, ['success' => false, 'error' => 'Invalid projectId: must be a positive integer'], 400);
+        }
+        $suggestion = $activityService->getRandomSuggestion($projectId);
+
         if (!$suggestion) {
             return jsonResponse($response, [
                 'success' => false,
@@ -88,7 +129,15 @@ $app->post('/activities', function (Request $request, Response $response) use ($
     try {
         $body = $request->getParsedBody();
         $name = $body['name'] ?? null;
-        $priority = isset($body['priority']) ? (float)$body['priority'] : 1.0;
+        $priority = isset($body['priority']) ? (float) $body['priority'] : 1.0;
+        if (isset($body['projectId'])) {
+            $projectId = parsePositiveInt($body['projectId']);
+            if ($projectId === null) {
+                return jsonResponse($response, ['success' => false, 'error' => 'Invalid projectId: must be a positive integer'], 400);
+            }
+        } else {
+            $projectId = 1;
+        }
 
         if (!$name || trim($name) === '') {
             return jsonResponse($response, [
@@ -97,7 +146,7 @@ $app->post('/activities', function (Request $request, Response $response) use ($
             ], 400);
         }
 
-        $activityService->addActivity(trim($name), $priority);
+        $activityService->addActivity(trim($name), $priority, $projectId);
 
         return jsonResponse($response, [
             'success' => true,
@@ -118,7 +167,11 @@ $app->post('/activities', function (Request $request, Response $response) use ($
 $app->delete('/activities/{name:.+}', function (Request $request, Response $response, array $args) use ($activityService) {
     try {
         $name = rawurldecode($args['name']);
-        $deleted = $activityService->deleteActivity($name);
+        $projectId = getProjectId($request);
+        if ($projectId === null) {
+            return jsonResponse($response, ['success' => false, 'error' => 'Invalid projectId: must be a positive integer'], 400);
+        }
+        $deleted = $activityService->deleteActivity($name, $projectId);
 
         if (!$deleted) {
             return jsonResponse($response, [
@@ -144,7 +197,15 @@ $app->patch('/activities/{name:.+}/priority', function (Request $request, Respon
     try {
         $name = rawurldecode($args['name']);
         $body = $request->getParsedBody();
-        $delta = isset($body['delta']) ? (float)$body['delta'] : null;
+        $delta = isset($body['delta']) ? (float) $body['delta'] : null;
+        if (isset($body['projectId'])) {
+            $projectId = parsePositiveInt($body['projectId']);
+            if ($projectId === null) {
+                return jsonResponse($response, ['success' => false, 'error' => 'Invalid projectId: must be a positive integer'], 400);
+            }
+        } else {
+            $projectId = 1;
+        }
 
         if ($delta === null) {
             return jsonResponse($response, [
@@ -153,7 +214,7 @@ $app->patch('/activities/{name:.+}/priority', function (Request $request, Respon
             ], 400);
         }
 
-        $newPriority = $activityService->adjustPriority($name, $delta);
+        $newPriority = $activityService->adjustPriority($name, $delta, $projectId);
 
         return jsonResponse($response, [
             'success' => true,

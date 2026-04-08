@@ -13,82 +13,107 @@ class RemoteDataSource implements DataSourceInterface
         $this->pdo = $pdo;
     }
 
-    public function getActivities(): array
+    public function getActivities(int $projectId): array
     {
-        $statement = $this->pdo->query('SELECT activity, priority FROM t_activity');
+        $statement = $this->pdo->prepare(
+            'SELECT activity, priority FROM t_activity WHERE project_id = :projectId',
+        );
+        $statement->execute(['projectId' => $projectId]);
         $activities = $statement->fetchAll();
-        
-        // Convert priority to float
-        return array_map(function($activity) {
-            $activity['priority'] = (float)$activity['priority'];
+
+        return array_map(function ($activity) {
+            $activity['priority'] = (float) $activity['priority'];
             return $activity;
         }, $activities);
     }
 
-    public function getActivityByName(string $name): ?array
+    public function getActivityByName(string $name, int $projectId): ?array
     {
-        $statement = $this->pdo->prepare('SELECT activity, priority FROM t_activity WHERE activity = :activity');
-        $statement->execute(['activity' => $name]);
+        $statement = $this->pdo->prepare(
+            'SELECT activity, priority FROM t_activity WHERE activity = :activity AND project_id = :projectId',
+        );
+        $statement->execute(['activity' => $name, 'projectId' => $projectId]);
         $result = $statement->fetch();
-        
+
         if ($result) {
-            $result['priority'] = (float)$result['priority'];
+            $result['priority'] = (float) $result['priority'];
         }
-        
+
         return $result ?: null;
     }
 
-    public function addActivity(string $name, float $priority): void
+    public function addActivity(string $name, float $priority, int $projectId): void
     {
         $statement = $this->pdo->prepare(
-            'INSERT INTO t_activity (activity, priority) VALUES (:activity, :priority)',
+            'INSERT INTO t_activity (activity, priority, project_id) VALUES (:activity, :priority, :projectId)',
         );
         $statement->execute([
             'activity' => $name,
             'priority' => $priority,
+            'projectId' => $projectId,
         ]);
     }
 
-    public function deleteActivity(string $name): bool
+    public function deleteActivity(string $name, int $projectId): bool
     {
-        $statement = $this->pdo->prepare('DELETE FROM t_activity WHERE activity = :activity');
-        $statement->execute(['activity' => $name]);
+        $statement = $this->pdo->prepare(
+            'DELETE FROM t_activity WHERE activity = :activity AND project_id = :projectId',
+        );
+        $statement->execute(['activity' => $name, 'projectId' => $projectId]);
         return $statement->rowCount() > 0;
     }
 
-    public function updatePriority(string $name, float $priority): void
+    public function updatePriority(string $name, float $priority, int $projectId): void
     {
         $statement = $this->pdo->prepare(
-            'UPDATE t_activity SET priority = :priority WHERE activity = :activity',
+            'UPDATE t_activity SET priority = :priority WHERE activity = :activity AND project_id = :projectId',
         );
         $statement->execute([
             'priority' => $priority,
             'activity' => $name,
+            'projectId' => $projectId,
         ]);
     }
 
-    public function getMaxPriority(): float
-    {
-        $statement = $this->pdo->query('SELECT MAX(priority) as max_priority FROM t_activity');
-        $result = $statement->fetch();
-        return (float)$result['max_priority'];
-    }
-
-    public function selectRandomActivity(float $minRoll): ?array
+    public function getMaxPriority(int $projectId): float
     {
         $statement = $this->pdo->prepare(
-            'SELECT activity, priority FROM t_activity 
-             WHERE priority >= :minRoll 
-             ORDER BY RAND() 
+            'SELECT MAX(priority) as max_priority FROM t_activity WHERE project_id = :projectId',
+        );
+        $statement->execute(['projectId' => $projectId]);
+        $result = $statement->fetch();
+        return (float) $result['max_priority'];
+    }
+
+    public function selectRandomActivity(float $minRoll, int $projectId): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT activity, priority FROM t_activity
+             WHERE priority >= :minRoll AND project_id = :projectId
+             ORDER BY RAND()
              LIMIT 1',
         );
-        $statement->execute(['minRoll' => $minRoll]);
+        $statement->execute(['minRoll' => $minRoll, 'projectId' => $projectId]);
         $result = $statement->fetch();
-        
+
         if ($result) {
-            $result['priority'] = (float)$result['priority'];
+            $result['priority'] = (float) $result['priority'];
         }
-        
+
+        return $result ?: null;
+    }
+
+    public function getProjects(): array
+    {
+        $statement = $this->pdo->query('SELECT id, name FROM t_project ORDER BY id');
+        return $statement->fetchAll();
+    }
+
+    public function getProjectByName(string $name): ?array
+    {
+        $statement = $this->pdo->prepare('SELECT id, name FROM t_project WHERE name = :name');
+        $statement->execute(['name' => $name]);
+        $result = $statement->fetch();
         return $result ?: null;
     }
 }
