@@ -11,11 +11,29 @@ if [ -n "$1" ]; then
 fi
 
 ACTIVITYGEN_WEB_PORT="${ACTIVITYGEN_WEB_PORT:-8080}"
+WEB_URL="http://localhost:${ACTIVITYGEN_WEB_PORT}"
 
 docker compose up -d nginx web
 
 echo "Web application started!"
-echo "Access it at: http://localhost:${ACTIVITYGEN_WEB_PORT}"
+echo "Access it at: ${WEB_URL}"
 echo ""
 echo "To stop the web application, run:"
 echo "  docker compose down"
+
+if command -v curl >/dev/null 2>&1; then
+  remaining=60
+  while [ "$remaining" -gt 0 ]; do
+    if curl --silent --fail --max-time 2 "${WEB_URL}" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+    remaining=$((remaining - 1))
+  done
+fi
+
+if command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "${WEB_URL}" >/dev/null 2>&1 &
+elif command -v open >/dev/null 2>&1; then
+  open "${WEB_URL}" >/dev/null 2>&1 &
+fi
