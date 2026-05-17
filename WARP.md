@@ -6,6 +6,8 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ActivityGen is a PHP application that suggests activities using priority-weighted random selection. It provides both a console interface and a web interface. It's built with Symfony Console (CLI) and Slim Framework (Web API), and runs in Docker containers. The application maintains a MySQL database of activities where users can adjust priorities in real-time based on their interest level.
 
+Activities are scoped by project, allowing users to organize activities into separate groups. The default project is "General". Both the web UI and CLI support selecting a project.
+
 The application supports offline mode with automatic synchronization. When offline, it uses a local SQLite database and queues operations to sync when back online.
 
 Both interfaces share the same backend logic through a common service layer (ActivityService), ensuring consistent behavior across CLI and web.
@@ -64,6 +66,11 @@ Add a new activity with a custom starting priority (whole number):
 ./bin/ag activity:add "Activity name" 3
 ```
 
+Add an activity to a specific project:
+```bash
+./bin/ag activity:add "Activity name" --project="Work"
+```
+
 Delete an activity:
 ```bash
 ./bin/ag activity:delete "Activity name"
@@ -74,6 +81,11 @@ Get activity suggestions (default command):
 ./bin/ag activity:get
 # or simply
 ./bin/ag
+```
+
+Get suggestions from a specific project:
+```bash
+./bin/ag activity:get --project="Work"
 ```
 
 ### Sync Management
@@ -94,6 +106,15 @@ Install PHP dependencies:
 ```bash
 composer install
 ```
+
+### Database Migrations
+
+Run migrations against the remote MySQL database:
+```bash
+docker compose run --rm app php bin/migrate
+```
+
+Migrations are stored in the `migrations/` directory as numbered `.sql` files (e.g. `001-add-projects.sql`) and are managed by `doomy/migrator`.
 
 ### Docker Operations
 
@@ -137,6 +158,8 @@ docker compose run --rm app php bin/console <command>
   - Provides priority-weighted random selection
   - Handles priority adjustments with proper bounds checking
   - Manages activity CRUD operations
+  - Manages project listing and lookup
+  - All activity operations accept a `projectId` parameter (default `1`)
   - Encapsulates business rules (min priority, adjustment increment)
 
 **Commands** (`src/Command/`)
@@ -144,22 +167,26 @@ docker compose run --rm app php bin/console <command>
 - `AddActivityCommand`: Inserts new activities with default priority (1.0) or an optional custom whole-number priority when provided
 - `DeleteActivityCommand`: Removes activities by name
 - `SyncCommand`: Manual sync trigger and status display
-- All commands now use ActivityService for business logic
+- All commands use ActivityService for business logic
+- `GetActivityCommand`, `AddActivityCommand`, and `DeleteActivityCommand` accept a `--project` option (default "General")
 
 **Web API** (`public/api/`)
 - REST API built with Slim Framework
 - Endpoints:
-  - `GET /api/activities` - List all activities
-  - `GET /api/activities/suggest` - Get random activity suggestion
-  - `POST /api/activities` - Add new activity
-  - `DELETE /api/activities/{name}` - Delete activity
-  - `PATCH /api/activities/{name}/priority` - Adjust activity priority
+  - `GET /api/projects` - List all projects
+  - `GET /api/activities?projectId=X` - List all activities for a project
+  - `GET /api/activities/suggest?projectId=X` - Get random activity suggestion for a project
+  - `POST /api/activities` - Add new activity (accepts `projectId` in body)
+  - `DELETE /api/activities/{name}?projectId=X` - Delete activity from a project
+  - `PATCH /api/activities/{name}/priority` - Adjust activity priority (accepts `projectId` in body)
   - `GET /api/sync/status` - Get online/offline status and pending operations
   - `POST /api/sync` - Manually trigger synchronization
+- All activity endpoints accept an optional `projectId` parameter (default `1`)
 - Uses the same ActivityService and ConnectionManager as CLI
 
 **Web Frontend** (`public/`)
 - Single-page application with vanilla JavaScript
+- Project selector dropdown in the header to switch between projects
 - Two main views:
   - **Suggestions View**: Display activity suggestions with thumbs up/down buttons for priority adjustment
   - **Manage Activities View**: List, add, and delete activities
@@ -178,19 +205,33 @@ This ensures higher priority activities are selected more frequently while maint
 
 ### Database Schema
 
+**Remote (MySQL) - `t_project`:**
+- `id` (INT, AUTO_INCREMENT, PRIMARY KEY): Project ID
+- `name` (VARCHAR(180), NOT NULL, UNIQUE): Project name
+
 **Remote (MySQL) - `t_activity`:**
-- `activity` (VARCHAR(255), PRIMARY KEY): Activity name
+- `id` (INT, AUTO_INCREMENT, PRIMARY KEY): Row ID
+- `activity` (VARCHAR(180), NOT NULL): Activity name
 - `priority` (DECIMAL(3,1), DEFAULT 1.0): Selection weight
+- `project_id` (INT, NOT NULL, DEFAULT 1, FK → t_project.id): Owning project
+- UNIQUE KEY: `(activity, project_id)`
+
+**Local (SQLite) - `t_project`:**
+- `id` (INTEGER, PRIMARY KEY AUTOINCREMENT): Project ID
+- `name` (TEXT, NOT NULL, UNIQUE): Project name
 
 **Local (SQLite) - `t_activity`:**
-- `activity` (TEXT, PRIMARY KEY): Activity name
+- `activity` (TEXT, NOT NULL): Activity name
 - `priority` (REAL, DEFAULT 1.0): Selection weight
+- `project_id` (INTEGER, NOT NULL, DEFAULT 1, FK → t_project.id): Owning project
+- PRIMARY KEY: `(activity, project_id)`
 
 **Local (SQLite) - `t_sync_queue`:**
 - `id` (INTEGER, PRIMARY KEY AUTOINCREMENT): Queue entry ID
 - `operation` (TEXT): Operation type (ADD_ACTIVITY, DELETE_ACTIVITY, PRIORITY_ADJUST)
 - `activity` (TEXT): Activity name
 - `delta` (REAL): Priority change amount (for PRIORITY_ADJUST) or initial priority (for ADD_ACTIVITY)
+- `project_id` (INTEGER, NOT NULL, DEFAULT 1): Associated project
 - `timestamp` (INTEGER): Unix timestamp of operation
 
 ### Interactive Terminal Controls
@@ -223,12 +264,13 @@ Offline behavior:
 
 ## Code Organization
 
-- `bin/`: Entry scripts (console PHP script, ag and web shell wrappers)
+- `bin/`: Entry scripts (console PHP script, ag and web shell wrappers, migrate script)
 - `src/`: Application source code with PSR-4 autoloading (`App\` namespace)
 - `src/Service/`: Shared business logic layer
 - `src/Command/`: Symfony Console command classes
 - `src/DataSource/`: Data access layer with interface and implementations
 - `src/Sync/`: Synchronization management
+- `migrations/`: SQL migration files for `doomy/migrator`
 - `public/`: Web application files
   - `index.html`: Main HTML page
   - `app.js`: Frontend JavaScript application
@@ -244,7 +286,7 @@ Offline behavior:
 
 ## Requirements
 
-- PHP 8.1+
+- PHP 8.2+
 - PDO extension with MySQL and SQLite support
 - Docker and Docker Compose
 - MySQL database server (accessed via Docker networking or external host)

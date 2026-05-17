@@ -22,8 +22,18 @@ class SyncManager
 
     public function syncFromRemote(): void
     {
-        $activities = $this->remoteDataSource->getActivities();
-        $this->localDataSource->replaceAllActivities($activities);
+        $projects = $this->remoteDataSource->getProjects();
+
+        $allActivities = [];
+        foreach ($projects as $project) {
+            $activities = $this->remoteDataSource->getActivities((int) $project['id']);
+            foreach ($activities as $activity) {
+                $activity['project_id'] = (int) $project['id'];
+                $allActivities[] = $activity;
+            }
+        }
+
+        $this->localDataSource->replaceAllProjectsAndActivities($projects, $allActivities);
     }
 
     public function syncToRemote(): array
@@ -38,7 +48,7 @@ class SyncManager
         foreach ($queue as $item) {
             try {
                 $result = $this->processQueueItem($item);
-                
+
                 if ($result === 'skipped') {
                     $skippedCount++;
                     $errors[] = [
@@ -75,9 +85,6 @@ class SyncManager
         ];
     }
 
-    /**
-     * @return array{success: int, failed: int, errors: array}
-     */
     public function fullSync(): array
     {
         $result = $this->syncToRemote();
@@ -87,26 +94,28 @@ class SyncManager
 
     private function processQueueItem(array $item): string
     {
+        $projectId = (int) ($item['project_id'] ?? 1);
+
         switch ($item['operation']) {
             case 'ADD_ACTIVITY':
-                return $this->processAddActivity($item);
+                return $this->processAddActivity($item, $projectId);
 
             case 'DELETE_ACTIVITY':
-                $this->remoteDataSource->deleteActivity($item['activity']);
+                $this->remoteDataSource->deleteActivity($item['activity'], $projectId);
                 return 'success';
 
             case 'PRIORITY_ADJUST':
-                return $this->processPriorityAdjust($item);
+                return $this->processPriorityAdjust($item, $projectId);
 
             default:
                 throw new \RuntimeException("Unknown operation: {$item['operation']}");
         }
     }
 
-    private function processAddActivity(array $item): string
+    private function processAddActivity(array $item, int $projectId): string
     {
         try {
-            $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
+            $this->remoteDataSource->addActivity($item['activity'], $item['delta'], $projectId);
             return 'success';
         } catch (\PDOException $e) {
             if ($this->isUniqueConstraintViolation($e)) {
@@ -116,15 +125,15 @@ class SyncManager
         }
     }
 
-    private function processPriorityAdjust(array $item): string
+    private function processPriorityAdjust(array $item, int $projectId): string
     {
-        $currentActivity = $this->remoteDataSource->getActivityByName($item['activity']);
+        $currentActivity = $this->remoteDataSource->getActivityByName($item['activity'], $projectId);
         if (!$currentActivity) {
             return 'skipped';
         }
-        
+
         $newPriority = max(self::MIN_PRIORITY, round($currentActivity['priority'] + $item['delta'], 1));
-        $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
+        $this->remoteDataSource->updatePriority($item['activity'], $newPriority, $projectId);
         return 'success';
     }
 

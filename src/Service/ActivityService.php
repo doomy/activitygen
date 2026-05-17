@@ -16,22 +16,17 @@ class ActivityService
         $this->dataSource = $dataSource;
     }
 
-    /**
-     * Get a random activity suggestion based on priority-weighted selection
-     *
-     * @return array{activity: string, priority: float, minRoll: float}|null
-     */
-    public function getRandomSuggestion(): ?array
+    public function getRandomSuggestion(int $projectId = 1): ?array
     {
-        $maxPriority = $this->dataSource->getMaxPriority();
-        
+        $maxPriority = $this->dataSource->getMaxPriority($projectId);
+
         if ($maxPriority == 0) {
             return null;
         }
 
-        $minRoll = mt_rand(0, (int)($maxPriority * 10)) / 10;
-        $result = $this->dataSource->selectRandomActivity($minRoll);
-        
+        $minRoll = mt_rand(0, (int) ($maxPriority * 10)) / 10;
+        $result = $this->dataSource->selectRandomActivity($minRoll, $projectId);
+
         if ($result) {
             $result['minRoll'] = $minRoll;
         }
@@ -39,92 +34,61 @@ class ActivityService
         return $result;
     }
 
-    /**
-     * Adjust activity priority by a delta amount
-     *
-     * @param string $activityName
-     * @param float $delta
-     * @return float The new priority value
-     * @throws \Exception If activity not found
-     */
-    public function adjustPriority(string $activityName, float $delta): float
+    public function adjustPriority(string $activityName, float $delta, int $projectId = 1): float
     {
-        $activity = $this->dataSource->getActivityByName($activityName);
-        
+        $activity = $this->dataSource->getActivityByName($activityName, $projectId);
+
         if (!$activity) {
             throw new \Exception("Activity not found: $activityName");
         }
 
         $newPriority = $this->calculateNewPriority($activity['priority'], $delta);
-        $this->dataSource->updatePriority($activityName, $newPriority);
+        $this->dataSource->updatePriority($activityName, $newPriority, $projectId);
 
         return $newPriority;
     }
 
-    /**
-     * Calculate new priority ensuring it stays within valid bounds
-     */
     private function calculateNewPriority(float $currentPriority, float $delta): float
     {
         $newPriority = $currentPriority + $delta;
         return max(self::MINIMUM_PRIORITY, round($newPriority, 1));
     }
 
-    /**
-     * Get all activities
-     *
-     * @return array<array{activity: string, priority: float}>
-     */
-    public function getAllActivities(): array
+    public function getAllActivities(int $projectId = 1): array
     {
-        return $this->dataSource->getActivities();
+        return $this->dataSource->getActivities($projectId);
     }
 
-    /**
-     * Get a single activity by name
-     *
-     * @param string $name
-     * @return array{activity: string, priority: float}|null
-     */
-    public function getActivityByName(string $name): ?array
+    public function getActivityByName(string $name, int $projectId = 1): ?array
     {
-        return $this->dataSource->getActivityByName($name);
+        return $this->dataSource->getActivityByName($name, $projectId);
     }
 
-    /**
-     * Add a new activity
-     *
-     * @param string $name
-     * @param float $priority
-     * @throws \Exception If activity already exists
-     */
-    public function addActivity(string $name, float $priority = 1.0): void
+    public function addActivity(string $name, float $priority = 1.0, int $projectId = 1): void
     {
-        $this->dataSource->addActivity($name, $priority);
+        $this->dataSource->addActivity($name, $priority, $projectId);
     }
 
-    /**
-     * Delete an activity
-     *
-     * @param string $name
-     * @return bool True if deleted, false if not found
-     */
-    public function deleteActivity(string $name): bool
+    public function deleteActivity(string $name, int $projectId = 1): bool
     {
-        return $this->dataSource->deleteActivity($name);
+        return $this->dataSource->deleteActivity($name, $projectId);
     }
 
-    /**
-     * Get the standard priority adjustment increment
-     */
+    public function getProjects(): array
+    {
+        return $this->dataSource->getProjects();
+    }
+
+    public function getProjectByName(string $name): ?array
+    {
+        return $this->dataSource->getProjectByName($name);
+    }
+
     public static function getPriorityAdjustment(): float
     {
         return self::PRIORITY_ADJUSTMENT;
     }
 
-    /**
-     * Get the minimum allowed priority
-     */
     public static function getMinimumPriority(): float
     {
         return self::MINIMUM_PRIORITY;

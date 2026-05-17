@@ -5,6 +5,7 @@ namespace App\Command;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use App\DataSource\DataSourceInterface;
 use App\Service\ActivityService;
@@ -28,7 +29,8 @@ class AddActivityCommand extends Command
         $this
             ->setDescription('Add a new activity with optional custom priority')
             ->addArgument('activity', InputArgument::REQUIRED, 'The activity name')
-            ->addArgument('rating', InputArgument::OPTIONAL, 'Custom priority rating (whole number)', null);
+            ->addArgument('rating', InputArgument::OPTIONAL, 'Custom priority rating (whole number)', null)
+            ->addOption('project', 'p', InputOption::VALUE_OPTIONAL, 'Project name', 'General');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -36,10 +38,18 @@ class AddActivityCommand extends Command
         $activityName = $input->getArgument('activity');
         $rating = $input->getArgument('rating');
         $priority = $rating !== null ? (float) $rating : self::DEFAULT_PRIORITY;
+        $projectName = $input->getOption('project');
+
+        $project = $this->activityService->getProjectByName($projectName);
+        if (!$project) {
+            $output->writeln("<error>Project '{$projectName}' not found</error>");
+            return Command::FAILURE;
+        }
+        $projectId = (int) $project['id'];
 
         try {
-            $this->activityService->addActivity($activityName, $priority);
-            $output->writeln("<info>Activity '{$activityName}' added with priority {$priority}</info>");
+            $this->activityService->addActivity($activityName, $priority, $projectId);
+            $output->writeln("<info>Activity '{$activityName}' added with priority {$priority} to project '{$projectName}'</info>");
             return Command::SUCCESS;
         } catch (\Exception $e) {
             if (strpos($e->getMessage(), 'UNIQUE constraint') !== false || strpos($e->getMessage(), 'Duplicate entry') !== false) {
