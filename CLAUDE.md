@@ -145,17 +145,24 @@ docker compose run --rm app php bin/console <command>
 **Web API** (`public/api/`)
 - REST API built with Slim Framework
 - Endpoints:
-  - `GET /api/activities` - List all activities
-  - `GET /api/activities/suggest` - Get random activity suggestion
-  - `POST /api/activities` - Add new activity
-  - `DELETE /api/activities/{name}` - Delete activity
-  - `PATCH /api/activities/{name}/priority` - Adjust activity priority
+  - `GET /api/projects` - List all projects
+  - `POST /api/projects` - Add a new project (requires an online remote connection)
+  - `GET /api/activities?project_id=` - List all activities in a project
+  - `GET /api/activities/suggest?project_id=` - Get random activity suggestion from a project
+  - `POST /api/activities` - Add new activity (`project_id` in body)
+  - `DELETE /api/activities/{name}?project_id=` - Delete activity
+  - `PATCH /api/activities/{name}/priority` - Adjust activity priority (`project_id` in body)
   - `GET /api/sync/status` - Get online/offline status and pending operations
   - `POST /api/sync` - Manually trigger synchronization
 - Uses the same ActivityService and ConnectionManager as CLI
+- Activities are scoped to a project (`t_project`); the web frontend keeps the
+  active project id in `localStorage` and passes it with every request. CLI
+  commands are unaffected and operate against a fixed "Default" project (id 1).
 
 **Web Frontend** (`public/`)
 - Single-page application with vanilla JavaScript
+- Project selector in the header: switches the active project scope (persisted
+  in `localStorage`) and a "+" button to add a new project
 - Two main views:
   - **Suggestions View**: Display activity suggestions with thumbs up/down buttons for priority adjustment
   - **Manage Activities View**: List, add, and delete activities
@@ -174,16 +181,36 @@ This ensures higher priority activities are selected more frequently while maint
 
 ### Database Schema
 
+**Remote (MySQL) - `t_project`:**
+- `id` (INT, PRIMARY KEY AUTO_INCREMENT): Project id
+- `name` (VARCHAR(180), UNIQUE): Project name
+
 **Remote (MySQL) - `t_activity`:**
-- `activity` (VARCHAR(255), PRIMARY KEY): Activity name
+- `id` (INT, PRIMARY KEY AUTO_INCREMENT): Surrogate row id
+- `project_id` (INT, FK -> `t_project.id`): Owning project
+- `activity` (VARCHAR(180)): Activity name
 - `priority` (DECIMAL(3,1), DEFAULT 1.0): Selection weight
+- UNIQUE KEY on (`activity`, `project_id`)
+
+This schema (including `t_project` and `project_id`) already exists on the
+remote database - it predates this app's code catching up to use it. No
+migration is needed; `RemoteDataSource` queries scope by `project_id` +
+`activity`, which the unique key makes unambiguous.
+
+**Local (SQLite) - `t_project`:**
+- Same shape as remote; kept as a read-through cache, replaced on every sync
 
 **Local (SQLite) - `t_activity`:**
-- `activity` (TEXT, PRIMARY KEY): Activity name
+- `project_id` (INTEGER, part of PRIMARY KEY): Owning project
+- `activity` (TEXT, part of PRIMARY KEY): Activity name
 - `priority` (REAL, DEFAULT 1.0): Selection weight
+
+`LocalDataSource` migrates a pre-existing (pre-project) local database in place
+on startup, defaulting all rows to project id 1.
 
 **Local (SQLite) - `t_sync_queue`:**
 - `id` (INTEGER, PRIMARY KEY AUTOINCREMENT): Queue entry ID
+- `project_id` (INTEGER): Project the operation belongs to
 - `operation` (TEXT): Operation type (ADD_ACTIVITY, DELETE_ACTIVITY, PRIORITY_ADJUST)
 - `activity` (TEXT): Activity name
 - `delta` (REAL): Priority change amount (for PRIORITY_ADJUST) or initial priority (for ADD_ACTIVITY)

@@ -22,8 +22,8 @@ class SyncManager
 
     public function syncFromRemote(): void
     {
-        $activities = $this->remoteDataSource->getActivities();
-        $this->localDataSource->replaceAllActivities($activities);
+        $this->localDataSource->replaceAllProjects($this->remoteDataSource->getProjects());
+        $this->localDataSource->replaceAllActivities($this->remoteDataSource->getAllActivitiesForSync());
     }
 
     public function syncToRemote(): array
@@ -92,7 +92,7 @@ class SyncManager
                 return $this->processAddActivity($item);
 
             case 'DELETE_ACTIVITY':
-                $this->remoteDataSource->deleteActivity($item['activity']);
+                $this->remoteDataSource->deleteActivity($item['project_id'], $item['activity']);
                 return 'success';
 
             case 'PRIORITY_ADJUST':
@@ -106,7 +106,7 @@ class SyncManager
     private function processAddActivity(array $item): string
     {
         try {
-            $this->remoteDataSource->addActivity($item['activity'], $item['delta']);
+            $this->remoteDataSource->addActivity($item['project_id'], $item['activity'], $item['delta']);
             return 'success';
         } catch (\PDOException $e) {
             if ($this->isUniqueConstraintViolation($e)) {
@@ -118,13 +118,13 @@ class SyncManager
 
     private function processPriorityAdjust(array $item): string
     {
-        $currentActivity = $this->remoteDataSource->getActivityByName($item['activity']);
+        $currentActivity = $this->remoteDataSource->getActivityByName($item['project_id'], $item['activity']);
         if (!$currentActivity) {
             return 'skipped';
         }
-        
+
         $newPriority = max(self::MIN_PRIORITY, round($currentActivity['priority'] + $item['delta'], 1));
-        $this->remoteDataSource->updatePriority($item['activity'], $newPriority);
+        $this->remoteDataSource->updatePriority($item['project_id'], $item['activity'], $newPriority);
         return 'success';
     }
 

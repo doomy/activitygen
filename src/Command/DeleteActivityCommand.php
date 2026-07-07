@@ -13,6 +13,8 @@ class DeleteActivityCommand extends Command
 {
     protected static $defaultName = 'activity:delete';
 
+    private const DEFAULT_PROJECT_ID = 1;
+
     private ActivityService $activityService;
 
     public function __construct(DataSourceInterface $dataSource)
@@ -33,7 +35,7 @@ class DeleteActivityCommand extends Command
         $activityName = $input->getArgument('activity');
 
         try {
-            $deleted = $this->activityService->deleteActivity($activityName);
+            $deleted = $this->activityService->deleteActivity(self::DEFAULT_PROJECT_ID, $activityName);
             
             if ($deleted) {
                 $output->writeln("<info>Activity '{$activityName}' has been deleted</info>");
