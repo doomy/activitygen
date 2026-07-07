@@ -12,6 +12,8 @@ class GetActivityCommand extends Command
 {
     protected static $defaultName = 'activity:get';
 
+    private const DEFAULT_PROJECT_ID = 1;
+
     private ActivityService $activityService;
     private OutputInterface $output;
 
@@ -62,7 +64,7 @@ class GetActivityCommand extends Command
 
     private function selectRandomActivity(): ?array
     {
-        return $this->activityService->getRandomSuggestion();
+        return $this->activityService->getRandomSuggestion(self::DEFAULT_PROJECT_ID);
     }
 
     private function displayActivity(array $activity): void
@@ -99,7 +101,7 @@ class GetActivityCommand extends Command
             return;
         }
 
-        $newPriority = $this->activityService->adjustPriority($activity['activity'], $delta);
+        $newPriority = $this->activityService->adjustPriority(self::DEFAULT_PROJECT_ID, $activity['activity'], $delta);
         $this->displayPriorityChange($newPriority);
         
         // Wait for another keystroke before continuing

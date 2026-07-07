@@ -9,6 +9,7 @@ ActivityGen helps you choose activities using a priority-based random selection 
 ## Features
 
 - **Dual Interface**: Use either command-line or web browser
+- **Projects**: Group activities into separate projects and switch which one you're drawing suggestions from (web interface)
 - **Priority-weighted selection**: Activities with higher priorities are more likely to be chosen
 - **Real-time adjustments**: Adjust activity priorities on-the-fly
 - **Offline support**: Works offline with automatic sync when reconnected
@@ -58,8 +59,9 @@ cp env/.web.sample env/.web
 Access at: **http://localhost:8080** (or your overridden port)
 
 The web interface provides:
+- **Project selector**: Switch which project's activities you're suggesting from, or add a new project with the "+" button (adding a project requires an online connection)
 - **Suggestions Tab**: Get activity suggestions with 👍/👎 buttons to adjust priorities
-- **Manage Activities Tab**: View, add, and delete activities
+- **Manage Activities Tab**: View, add, and delete activities within the selected project
 - **Sync Status**: Real-time online/offline status indicator
 
 Stop the web application:
@@ -118,13 +120,23 @@ When an activity is displayed:
 
 **Remote (MySQL):**
 ```sql
+CREATE TABLE t_project (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(180) NOT NULL UNIQUE
+);
+
 CREATE TABLE t_activity (
-    activity VARCHAR(255) PRIMARY KEY,
-    priority DECIMAL(3,1) DEFAULT 1.0
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT NOT NULL,
+    activity VARCHAR(180) NOT NULL,
+    priority DECIMAL(3,1) DEFAULT 1.0,
+    UNIQUE KEY activity_project (activity, project_id),
+    FOREIGN KEY (project_id) REFERENCES t_project(id)
 );
 ```
 
-**Local (SQLite):** Automatically created for offline support
+**Local (SQLite):** Automatically created (and migrated in place, for any
+local database predating projects) for offline support
 
 ## How It Works
 

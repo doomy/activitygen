@@ -1,15 +1,24 @@
 const API_BASE = '/api';
+const PROJECT_ID_STORAGE_KEY = 'activitygen_project_id';
 
 class ActivityGenApp {
     constructor() {
         this.currentSuggestion = null;
         this.syncStatusInterval = null;
         this.isPollingActive = false;
+        this.currentProjectId = null;
+        this.projects = [];
 
         this.initElements();
         this.attachEventListeners();
         this.setupVisibilityChangeHandler();
-        
+
+        this.init();
+    }
+
+    async init() {
+        await this.loadProjects();
+
         // Only start polling if the page is visible
         if (!document.hidden) {
             this.startSyncStatusPolling();
@@ -23,6 +32,14 @@ class ActivityGenApp {
             suggest: document.getElementById('suggestView'),
             manage: document.getElementById('manageView'),
         };
+
+        // Project selector
+        this.projectSelect = document.getElementById('projectSelect');
+        this.btnShowAddProject = document.getElementById('btnShowAddProject');
+        this.addProjectFormContainer = document.getElementById('addProjectFormContainer');
+        this.newProjectName = document.getElementById('newProjectName');
+        this.btnAddProject = document.getElementById('btnAddProject');
+        this.btnCancelAddProject = document.getElementById('btnCancelAddProject');
 
         // Suggestion view
         this.suggestionContent = document.getElementById('suggestionContent');
@@ -52,6 +69,15 @@ class ActivityGenApp {
         // Tab switching
         this.tabs.forEach(tab => {
             tab.addEventListener('click', () => this.switchTab(tab.dataset.view));
+        });
+
+        // Project selector
+        this.projectSelect.addEventListener('change', () => this.switchProject(this.projectSelect.value));
+        this.btnShowAddProject.addEventListener('click', () => this.toggleAddProjectForm(true));
+        this.btnCancelAddProject.addEventListener('click', () => this.toggleAddProjectForm(false));
+        this.btnAddProject.addEventListener('click', () => this.addProject());
+        this.newProjectName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addProject();
         });
 
         // Suggestion actions
@@ -85,12 +111,109 @@ class ActivityGenApp {
         }
     }
 
+    async loadProjects() {
+        try {
+            const response = await fetch(`${API_BASE}/projects`);
+            const result = await response.json();
+
+            if (!result.success) {
+                this.showNotification(result.error, 'error');
+                return;
+            }
+
+            this.projects = result.data;
+            this.renderProjectSelect();
+
+            const storedProjectId = localStorage.getItem(PROJECT_ID_STORAGE_KEY);
+            const storedProjectExists = this.projects.some(p => String(p.id) === storedProjectId);
+
+            this.currentProjectId = storedProjectExists
+                ? storedProjectId
+                : (this.projects[0] ? String(this.projects[0].id) : null);
+
+            if (this.currentProjectId) {
+                this.projectSelect.value = this.currentProjectId;
+                localStorage.setItem(PROJECT_ID_STORAGE_KEY, this.currentProjectId);
+            }
+
+            this.onProjectChanged();
+        } catch (error) {
+            this.showNotification('Failed to load projects', 'error');
+            console.error('Error loading projects:', error);
+        }
+    }
+
+    renderProjectSelect() {
+        this.projectSelect.innerHTML = this.projects
+            .map(p => `<option value="${p.id}">${this.escapeHtml(p.name)}</option>`)
+            .join('');
+    }
+
+    switchProject(projectId) {
+        this.currentProjectId = projectId;
+        localStorage.setItem(PROJECT_ID_STORAGE_KEY, projectId);
+        this.onProjectChanged();
+    }
+
+    onProjectChanged() {
+        this.resetToInitialState();
+
+        const activeView = Object.entries(this.views).find(([, view]) => view.classList.contains('active'));
+        if (activeView && activeView[0] === 'manage') {
+            this.loadActivities();
+        }
+    }
+
+    toggleAddProjectForm(show) {
+        if (show) {
+            this.addProjectFormContainer.classList.remove('hidden');
+            this.newProjectName.focus();
+        } else {
+            this.addProjectFormContainer.classList.add('hidden');
+            this.newProjectName.value = '';
+        }
+    }
+
+    async addProject() {
+        const name = this.newProjectName.value.trim();
+
+        if (!name) {
+            this.showNotification('Project name is required', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showNotification(`Project "${name}" added`, 'success');
+                this.toggleAddProjectForm(false);
+
+                this.projects.push(result.data);
+                this.renderProjectSelect();
+                this.projectSelect.value = String(result.data.id);
+                this.switchProject(String(result.data.id));
+            } else {
+                this.showNotification(result.error, 'error');
+            }
+        } catch (error) {
+            this.showNotification('Failed to add project', 'error');
+            console.error('Error adding project:', error);
+        }
+    }
+
     async getNextSuggestion() {
         this.showLoadingState();
         this.setActionButtonsEnabled(false);
 
         try {
-            const response = await fetch(`${API_BASE}/activities/suggest`);
+            const response = await fetch(`${API_BASE}/activities/suggest?project_id=${this.currentProjectId}`);
             const result = await response.json();
 
             if (result.success) {
@@ -150,7 +273,7 @@ class ActivityGenApp {
                 {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ delta }),
+                    body: JSON.stringify({ delta, project_id: this.currentProjectId }),
                 },
             );
 
@@ -179,7 +302,7 @@ class ActivityGenApp {
         try {
             this.activitiesList.innerHTML = '<p class="loading">Loading activities...</p>';
 
-            const response = await fetch(`${API_BASE}/activities`);
+            const response = await fetch(`${API_BASE}/activities?project_id=${this.currentProjectId}`);
             const result = await response.json();
 
             if (result.success) {
@@ -243,7 +366,7 @@ class ActivityGenApp {
             const response = await fetch(`${API_BASE}/activities`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, priority }),
+                body: JSON.stringify({ name, priority, project_id: this.currentProjectId }),
             });
 
             const result = await response.json();
@@ -265,9 +388,10 @@ class ActivityGenApp {
         if (!confirm(`Delete activity "${name}"?`)) return;
 
         try {
-            const response = await fetch(`${API_BASE}/activities/${encodeURIComponent(name)}`, {
-                method: 'DELETE',
-            });
+            const response = await fetch(
+                `${API_BASE}/activities/${encodeURIComponent(name)}?project_id=${this.currentProjectId}`,
+                { method: 'DELETE' },
+            );
 
             const result = await response.json();
 
@@ -337,7 +461,7 @@ class ActivityGenApp {
         if (this.isPollingActive) {
             return;
         }
-        
+
         this.isPollingActive = true;
         this.updateSyncStatus();
         this.syncStatusInterval = setInterval(() => this.updateSyncStatus(), 5000);

@@ -43,10 +43,79 @@ function jsonResponse(Response $response, array $data, int $status = 200): Respo
         ->withStatus($status);
 }
 
-// GET /activities - List all activities
+// Helper to read and validate the project_id query/body parameter
+function requireProjectId(array $params): ?int
+{
+    if (!isset($params['project_id']) || trim((string)$params['project_id']) === '') {
+        return null;
+    }
+
+    return (int)$params['project_id'];
+}
+
+// GET /projects - List all projects
+$app->get('/projects', function (Request $request, Response $response) use ($activityService) {
+    try {
+        $projects = $activityService->getProjects();
+        return jsonResponse($response, [
+            'success' => true,
+            'data' => $projects,
+        ]);
+    } catch (\Exception $e) {
+        return jsonResponse($response, [
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
+// POST /projects - Add a new project (requires an online remote connection)
+$app->post('/projects', function (Request $request, Response $response) use ($connectionManager) {
+    try {
+        $body = $request->getParsedBody();
+        $name = $body['name'] ?? null;
+
+        if (!$name || trim($name) === '') {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'Project name is required',
+            ], 400);
+        }
+
+        $remoteDataSource = $connectionManager->getRemoteDataSource();
+        if (!$connectionManager->isOnline() || !$remoteDataSource) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'Cannot add a project while offline',
+            ], 400);
+        }
+
+        $project = $remoteDataSource->addProject(trim($name));
+
+        return jsonResponse($response, [
+            'success' => true,
+            'data' => $project,
+        ], 201);
+    } catch (\Exception $e) {
+        return jsonResponse($response, [
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
+// GET /activities - List all activities in a project
 $app->get('/activities', function (Request $request, Response $response) use ($activityService) {
     try {
-        $activities = $activityService->getAllActivities();
+        $projectId = requireProjectId($request->getQueryParams());
+        if ($projectId === null) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'project_id is required',
+            ], 400);
+        }
+
+        $activities = $activityService->getAllActivities($projectId);
         return jsonResponse($response, [
             'success' => true,
             'data' => $activities,
@@ -59,11 +128,19 @@ $app->get('/activities', function (Request $request, Response $response) use ($a
     }
 });
 
-// GET /activities/suggest - Get a random activity suggestion
+// GET /activities/suggest - Get a random activity suggestion from a project
 $app->get('/activities/suggest', function (Request $request, Response $response) use ($activityService) {
     try {
-        $suggestion = $activityService->getRandomSuggestion();
-        
+        $projectId = requireProjectId($request->getQueryParams());
+        if ($projectId === null) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'project_id is required',
+            ], 400);
+        }
+
+        $suggestion = $activityService->getRandomSuggestion($projectId);
+
         if (!$suggestion) {
             return jsonResponse($response, [
                 'success' => false,
@@ -83,12 +160,20 @@ $app->get('/activities/suggest', function (Request $request, Response $response)
     }
 });
 
-// POST /activities - Add a new activity
+// POST /activities - Add a new activity to a project
 $app->post('/activities', function (Request $request, Response $response) use ($activityService) {
     try {
         $body = $request->getParsedBody();
+        $projectId = requireProjectId($body ?? []);
         $name = $body['name'] ?? null;
         $priority = isset($body['priority']) ? (float)$body['priority'] : 1.0;
+
+        if ($projectId === null) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'project_id is required',
+            ], 400);
+        }
 
         if (!$name || trim($name) === '') {
             return jsonResponse($response, [
@@ -97,7 +182,7 @@ $app->post('/activities', function (Request $request, Response $response) use ($
             ], 400);
         }
 
-        $activityService->addActivity(trim($name), $priority);
+        $activityService->addActivity($projectId, trim($name), $priority);
 
         return jsonResponse($response, [
             'success' => true,
@@ -114,11 +199,19 @@ $app->post('/activities', function (Request $request, Response $response) use ($
     }
 });
 
-// DELETE /activities/{name} - Delete an activity
+// DELETE /activities/{name} - Delete an activity from a project
 $app->delete('/activities/{name:.+}', function (Request $request, Response $response, array $args) use ($activityService) {
     try {
+        $projectId = requireProjectId($request->getQueryParams());
+        if ($projectId === null) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'project_id is required',
+            ], 400);
+        }
+
         $name = rawurldecode($args['name']);
-        $deleted = $activityService->deleteActivity($name);
+        $deleted = $activityService->deleteActivity($projectId, $name);
 
         if (!$deleted) {
             return jsonResponse($response, [
@@ -139,12 +232,19 @@ $app->delete('/activities/{name:.+}', function (Request $request, Response $resp
     }
 });
 
-// PATCH /activities/{name}/priority - Update activity priority
+// PATCH /activities/{name}/priority - Update activity priority within a project
 $app->patch('/activities/{name:.+}/priority', function (Request $request, Response $response, array $args) use ($activityService) {
     try {
-        $name = rawurldecode($args['name']);
         $body = $request->getParsedBody();
+        $projectId = requireProjectId($body ?? []);
         $delta = isset($body['delta']) ? (float)$body['delta'] : null;
+
+        if ($projectId === null) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'project_id is required',
+            ], 400);
+        }
 
         if ($delta === null) {
             return jsonResponse($response, [
@@ -153,7 +253,8 @@ $app->patch('/activities/{name:.+}/priority', function (Request $request, Respon
             ], 400);
         }
 
-        $newPriority = $activityService->adjustPriority($name, $delta);
+        $name = rawurldecode($args['name']);
+        $newPriority = $activityService->adjustPriority($projectId, $name, $delta);
 
         return jsonResponse($response, [
             'success' => true,

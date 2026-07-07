@@ -14,6 +14,7 @@ class AddActivityCommand extends Command
     protected static $defaultName = 'activity:add';
 
     private const DEFAULT_PRIORITY = 1.0;
+    private const DEFAULT_PROJECT_ID = 1;
 
     private ActivityService $activityService;
 
@@ -38,7 +39,7 @@ class AddActivityCommand extends Command
         $priority = $rating !== null ? (float) $rating : self::DEFAULT_PRIORITY;
 
         try {
-            $this->activityService->addActivity($activityName, $priority);
+            $this->activityService->addActivity(self::DEFAULT_PROJECT_ID, $activityName, $priority);
             $output->writeln("<info>Activity '{$activityName}' added with priority {$priority}</info>");
             return Command::SUCCESS;
         } catch (\Exception $e) {
