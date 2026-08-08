@@ -54,6 +54,7 @@
                         <span class="label">+0.1</span>
                     </button>
                 </div>
+                <button id="btnDeleteSuggestion" class="btn-delete-suggestion" disabled>🗑️ Delete Activity</button>
             </div>
         </div>
 
@@ -77,6 +78,16 @@
         </div>
 
         <div id="notification" class="notification hidden"></div>
+
+        <div id="confirmDialogOverlay" class="modal-overlay hidden">
+            <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmDialogMessage">
+                <p id="confirmDialogMessage"></p>
+                <div class="modal-actions">
+                    <button id="confirmDialogCancel" class="btn-secondary">Cancel</button>
+                    <button id="confirmDialogConfirm" class="btn-delete-confirm">Delete</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>
