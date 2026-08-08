@@ -8,6 +8,7 @@ class ActivityGenApp {
         this.isPollingActive = false;
         this.currentProjectId = null;
         this.projects = [];
+        this.confirmDialogResolve = null;
 
         this.initElements();
         this.attachEventListeners();
@@ -46,6 +47,13 @@ class ActivityGenApp {
         this.btnThumbsDown = document.getElementById('btnThumbsDown');
         this.btnNext = document.getElementById('btnNext');
         this.btnThumbsUp = document.getElementById('btnThumbsUp');
+        this.btnDeleteSuggestion = document.getElementById('btnDeleteSuggestion');
+
+        // Confirm dialog
+        this.confirmDialogOverlay = document.getElementById('confirmDialogOverlay');
+        this.confirmDialogMessage = document.getElementById('confirmDialogMessage');
+        this.confirmDialogCancel = document.getElementById('confirmDialogCancel');
+        this.confirmDialogConfirm = document.getElementById('confirmDialogConfirm');
 
         // Manage view
         this.btnShowAddForm = document.getElementById('btnShowAddForm');
@@ -84,6 +92,14 @@ class ActivityGenApp {
         this.btnThumbsDown.addEventListener('click', () => this.adjustPriority(-0.1));
         this.btnNext.addEventListener('click', () => this.getNextSuggestion());
         this.btnThumbsUp.addEventListener('click', () => this.adjustPriority(0.1));
+        this.btnDeleteSuggestion.addEventListener('click', () => this.deleteCurrentSuggestion());
+
+        // Confirm dialog
+        this.confirmDialogCancel.addEventListener('click', () => this.resolveConfirmDialog(false));
+        this.confirmDialogConfirm.addEventListener('click', () => this.resolveConfirmDialog(true));
+        this.confirmDialogOverlay.addEventListener('click', (e) => {
+            if (e.target === this.confirmDialogOverlay) this.resolveConfirmDialog(false);
+        });
 
         // Manage actions
         this.btnShowAddForm.addEventListener('click', () => this.toggleAddForm(true));
@@ -255,6 +271,7 @@ class ActivityGenApp {
         this.btnThumbsDown.disabled = !enabled;
         this.btnNext.disabled = !enabled;
         this.btnThumbsUp.disabled = !enabled;
+        this.btnDeleteSuggestion.disabled = !enabled;
     }
 
     resetToInitialState() {
@@ -262,6 +279,51 @@ class ActivityGenApp {
         this.suggestionContent.innerHTML = '<p class="placeholder">Click "Get Suggestion" to start</p>';
         this.setActionButtonsEnabled(false);
         this.btnNext.disabled = false;
+    }
+
+    showConfirmDialog(message) {
+        this.confirmDialogMessage.textContent = message;
+        this.confirmDialogOverlay.classList.remove('hidden');
+
+        return new Promise(resolve => {
+            this.confirmDialogResolve = resolve;
+        });
+    }
+
+    resolveConfirmDialog(confirmed) {
+        this.confirmDialogOverlay.classList.add('hidden');
+
+        if (this.confirmDialogResolve) {
+            this.confirmDialogResolve(confirmed);
+            this.confirmDialogResolve = null;
+        }
+    }
+
+    async deleteCurrentSuggestion() {
+        if (!this.currentSuggestion) return;
+
+        const name = this.currentSuggestion.activity;
+        const confirmed = await this.showConfirmDialog(`Delete activity "${name}"?`);
+        if (!confirmed) return;
+
+        try {
+            const response = await fetch(
+                `${API_BASE}/activities/${encodeURIComponent(name)}?project_id=${this.currentProjectId}`,
+                { method: 'DELETE' },
+            );
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showNotification(`Activity "${name}" deleted`, 'success');
+                this.resetToInitialState();
+            } else {
+                this.showNotification(result.error, 'error');
+            }
+        } catch (error) {
+            this.showNotification('Failed to delete activity', 'error');
+            console.error('Error deleting activity:', error);
+        }
     }
 
     async adjustPriority(delta) {
@@ -385,7 +447,8 @@ class ActivityGenApp {
     }
 
     async deleteActivity(name) {
-        if (!confirm(`Delete activity "${name}"?`)) return;
+        const confirmed = await this.showConfirmDialog(`Delete activity "${name}"?`);
+        if (!confirmed) return;
 
         try {
             const response = await fetch(
