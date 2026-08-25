@@ -1,0 +1,31 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use App\Tui\ApiClient;
+use App\Tui\Terminal;
+use App\Tui\TuiApplication;
+
+$apiUrl = getenv('ACTIVITYGEN_API_URL') ?: 'http://localhost:8080/api';
+
+foreach (array_slice($argv, 1) as $arg) {
+    if (str_starts_with($arg, '--url=')) {
+        $apiUrl = substr($arg, strlen('--url='));
+    } else {
+        fwrite(STDERR, "Usage: tui-app [--url=<api base url>]\n");
+        exit(1);
+    }
+}
+
+if (!stream_isatty(STDIN) || !stream_isatty(STDOUT)) {
+    fwrite(STDERR, "The TUI requires an interactive terminal.\n");
+    exit(1);
+}
+
+try {
+    exit((new TuiApplication(new ApiClient($apiUrl), new Terminal()))->run());
+} catch (\Throwable $e) {
+    fwrite(STDERR, "Error: {$e->getMessage()}\n");
+    exit(1);
+}

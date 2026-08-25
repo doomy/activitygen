@@ -8,6 +8,18 @@ services:
       - env/.db
     working_dir: /app
 
+  tui:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      ACTIVITYGEN_API_URL: http://nginx/api
+    depends_on:
+      - nginx
+    networks:
+      - activitygen
+
   web:
     build:
       context: .

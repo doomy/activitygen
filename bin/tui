@@ -1,0 +1,8 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# The tui service depends on nginx + web, so `docker compose run` starts the
+# whole web stack automatically if it isn't running yet.
+docker compose -f "$PROJECT_DIR/docker-compose.yml" run --rm tui php bin/tui-app "$@"

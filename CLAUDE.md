@@ -1,6 +1,8 @@
 ## Project Overview
 
-ActivityGen is a PHP application that suggests activities using priority-weighted random selection. It provides both a console interface and a web interface. It's built with Symfony Console (CLI) and Slim Framework (Web API), and runs in Docker containers. The application maintains a MySQL database of activities where users can adjust priorities in real-time based on their interest level.
+ActivityGen is a PHP application that suggests activities using priority-weighted random selection. It provides a console interface, a web interface, and a full-screen TUI (terminal UI). It's built with Symfony Console (CLI) and Slim Framework (Web API), and runs in Docker containers. The application maintains a MySQL database of activities where users can adjust priorities in real-time based on their interest level.
+
+**Web UI / TUI feature parity rule:** The TUI is a keyboard-driven alternative frontend to the same REST API the web frontend uses. Both must stay in feature parity: any feature or change added to the web app must also be reflected in the TUI, and vice versa. Never add a UI-only capability to one of them.
 
 The application supports offline mode with automatic synchronization. When offline, it uses a local SQLite database and queues operations to sync when back online.
 
@@ -47,6 +49,26 @@ Rebuild web containers after code changes:
 docker compose build web
 ./bin/web
 ```
+
+### Running the TUI Application
+
+Start the TUI (starts the nginx + PHP-FPM web stack automatically if needed, since the TUI talks to the same REST API):
+```bash
+./bin/tui
+```
+
+Override the API base URL (defaults to `http://nginx/api` inside Docker, `http://localhost:8080/api` outside):
+```bash
+./bin/tui --url=http://localhost:8081/api
+# or set ACTIVITYGEN_API_URL
+```
+
+Keyboard controls:
+- Global: `1`/`2`/`Tab` switch view, `p` project picker, `s` manual sync, `r` refresh, `q` quit
+- Suggestions view: `Space`/`Enter`/`n` next suggestion, `+`/`=` thumbs up, `-`/`_` thumbs down
+- Manage view: `↑`/`↓` (or `k`/`j`) navigate, `a` add activity, `d`/`Delete` delete (with `y`/`n` confirm)
+- Project picker: `↑`/`↓` navigate, `Enter` select, `a` add project, `Esc` close
+- Text input: type, `Enter` confirm, `Esc` cancel
 
 ### Activity Management
 
@@ -159,6 +181,15 @@ docker compose run --rm app php bin/console <command>
   active project id in `localStorage` and passes it with every request. CLI
   commands are unaffected and operate against a fixed "Default" project (id 1).
 
+**TUI Frontend** (`src/Tui/`, `bin/tui-app`)
+- Full-screen, completely keyboard-controlled terminal UI mirroring the web frontend
+- Talks to the same REST API as the web frontend via `ApiClient` (`src/Tui/ApiClient.php`) — it never touches the database or ActivityService directly, keeping behavior uniform across frontends
+- `Terminal` (`src/Tui/Terminal.php`): raw mode via `stty`, alternate screen buffer, ANSI rendering, escape-sequence key decoding
+- `TuiApplication` (`src/Tui/TuiApplication.php`): views (Suggestions / Manage Activities), project picker, add/delete flows, delete confirmation, sync status polling every 5s, transient notifications
+- Same behavior as the web UI: thumbs up resets to the initial state, thumbs down auto-advances to the next suggestion; activities list sorted by priority descending
+- Active project id persisted in `data/tui_state.json` (the TUI counterpart of the web app's `localStorage`)
+- Runs as the `tui` Docker Compose service on the `activitygen` network, reaching the API at `http://nginx/api`; `./bin/tui` is the wrapper (its `depends_on` starts nginx + web automatically)
+
 **Web Frontend** (`public/`)
 - Single-page application with vanilla JavaScript
 - Project selector in the header: switches the active project scope (persisted
@@ -246,12 +277,13 @@ Offline behavior:
 
 ## Code Organization
 
-- `bin/`: Entry scripts (console PHP script, ag and web shell wrappers)
+- `bin/`: Entry scripts (console and tui-app PHP scripts; ag, web and tui shell wrappers)
 - `src/`: Application source code with PSR-4 autoloading (`App\` namespace)
 - `src/Service/`: Shared business logic layer
 - `src/Command/`: Symfony Console command classes
 - `src/DataSource/`: Data access layer with interface and implementations
 - `src/Sync/`: Synchronization management
+- `src/Tui/`: TUI frontend (ApiClient, Terminal, TuiApplication)
 - `public/`: Web application files
   - `index.html`: Main HTML page
   - `app.js`: Frontend JavaScript application

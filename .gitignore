@@ -4,3 +4,4 @@ env/.db
 env/.web
 .idea
 data/local.db
+data/tui_state.json
