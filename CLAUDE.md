@@ -260,6 +260,7 @@ The GetActivityCommand uses `stty` to capture single keypress input:
 Database credentials are stored in `env/.db` (gitignored). Use `env/.db.sample` as a template:
 ```
 DB_HOST=<db_host>
+DB_PORT=3306
 DB_DATABASE=activitygen
 DB_USERNAME=<db_user>
 DB_PASSWORD=<db_password>
