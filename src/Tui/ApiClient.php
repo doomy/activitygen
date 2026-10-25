@@ -32,6 +32,14 @@ class ApiClient
         return $this->request('POST', '/projects', ['name' => $name]);
     }
 
+    /**
+     * Deletes (archives) a project. Its activities stay in the database.
+     */
+    public function deleteProject(int $projectId): array
+    {
+        return $this->request('DELETE', '/projects/' . $projectId);
+    }
+
     public function getActivities(int $projectId): array
     {
         return $this->request('GET', '/activities?' . http_build_query(['project_id' => $projectId]));

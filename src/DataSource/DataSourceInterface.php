@@ -5,16 +5,16 @@ namespace App\DataSource;
 interface DataSourceInterface
 {
     /**
-     * Fetch all projects
+     * Fetch all projects that are not archived
      *
      * @return array<array{id: int, name: string}>
      */
     public function getProjects(): array;
 
     /**
-     * Get single project by id
+     * Get single project by id, archived ones included
      *
-     * @return array{id: int, name: string}|null
+     * @return array{id: int, name: string, archived: bool}|null
      */
     public function getProjectById(int $id): ?array;
 

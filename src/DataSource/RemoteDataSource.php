@@ -11,11 +11,30 @@ class RemoteDataSource implements DataSourceInterface
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
+        $this->ensureSchema();
+    }
+
+    /**
+     * Adds the `archived` flag to a pre-existing t_project table.
+     *
+     * The rest of the schema predates this code base, but archiving projects
+     * needs one new column, so it is added in place the same way
+     * LocalDataSource migrates the SQLite mirror.
+     */
+    private function ensureSchema(): void
+    {
+        $statement = $this->pdo->query("SHOW COLUMNS FROM t_project LIKE 'archived'");
+
+        if ($statement->fetch()) {
+            return;
+        }
+
+        $this->pdo->exec('ALTER TABLE t_project ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0');
     }
 
     public function getProjects(): array
     {
-        $statement = $this->pdo->query('SELECT id, name FROM t_project ORDER BY name');
+        $statement = $this->pdo->query('SELECT id, name FROM t_project WHERE archived = 0 ORDER BY name');
         return array_map(
             fn ($project) => ['id' => (int)$project['id'], 'name' => $project['name']],
             $statement->fetchAll(),
@@ -24,8 +43,55 @@ class RemoteDataSource implements DataSourceInterface
 
     public function getProjectById(int $id): ?array
     {
-        $statement = $this->pdo->prepare('SELECT id, name FROM t_project WHERE id = :id');
+        $statement = $this->pdo->prepare('SELECT id, name, archived FROM t_project WHERE id = :id');
         $statement->execute(['id' => $id]);
+        $result = $statement->fetch();
+
+        if (!$result) {
+            return null;
+        }
+
+        return [
+            'id' => (int)$result['id'],
+            'name' => $result['name'],
+            'archived' => (bool)$result['archived'],
+        ];
+    }
+
+    /**
+     * Add a new project, or restore the archived project of that name.
+     *
+     * Archived projects keep their (unique) name, so adding a project whose
+     * name is archived unarchives it together with all of its activities.
+     *
+     * @return array{id: int, name: string, restored: bool}
+     * @throws \Exception If a visible project with this name already exists
+     */
+    public function addProject(string $name): array
+    {
+        $archived = $this->findArchivedProjectByName($name);
+
+        if ($archived !== null) {
+            $this->unarchiveProject($archived['id']);
+
+            return ['id' => $archived['id'], 'name' => $archived['name'], 'restored' => true];
+        }
+
+        $statement = $this->pdo->prepare('INSERT INTO t_project (name) VALUES (:name)');
+        $statement->execute(['name' => $name]);
+
+        return ['id' => (int)$this->pdo->lastInsertId(), 'name' => $name, 'restored' => false];
+    }
+
+    /**
+     * @return array{id: int, name: string}|null
+     */
+    private function findArchivedProjectByName(string $name): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT id, name FROM t_project WHERE name = :name AND archived = 1',
+        );
+        $statement->execute(['name' => $name]);
         $result = $statement->fetch();
 
         if (!$result) {
@@ -36,17 +102,51 @@ class RemoteDataSource implements DataSourceInterface
     }
 
     /**
-     * Add a new project
-     *
-     * @return array{id: int, name: string}
-     * @throws \Exception If a project with this name already exists
+     * Restore an archived project, making it visible to clients again
      */
-    public function addProject(string $name): array
+    public function unarchiveProject(int $id): bool
     {
-        $statement = $this->pdo->prepare('INSERT INTO t_project (name) VALUES (:name)');
-        $statement->execute(['name' => $name]);
+        $statement = $this->pdo->prepare(
+            'UPDATE t_project SET archived = 0 WHERE id = :id AND archived = 1',
+        );
+        $statement->execute(['id' => $id]);
 
-        return ['id' => (int)$this->pdo->lastInsertId(), 'name' => $name];
+        return $statement->rowCount() > 0;
+    }
+
+    /**
+     * Archive a project: it disappears from every client, but neither the
+     * project row nor its activities are erased, so it can be restored.
+     *
+     * @return bool True if the project was archived by this call
+     */
+    public function archiveProject(int $id): bool
+    {
+        $statement = $this->pdo->prepare(
+            'UPDATE t_project SET archived = 1 WHERE id = :id AND archived = 0',
+        );
+        $statement->execute(['id' => $id]);
+
+        return $statement->rowCount() > 0;
+    }
+
+    /**
+     * Fetch every project, archived ones included, for building the local sync
+     * mirror. Clients read projects through getProjects() instead.
+     *
+     * @return array<array{id: int, name: string, archived: bool}>
+     */
+    public function getAllProjectsForSync(): array
+    {
+        $statement = $this->pdo->query('SELECT id, name, archived FROM t_project');
+        return array_map(
+            fn ($project) => [
+                'id' => (int)$project['id'],
+                'name' => $project['name'],
+                'archived' => (bool)$project['archived'],
+            ],
+            $statement->fetchAll(),
+        );
     }
 
     /**

@@ -28,18 +28,34 @@ class LocalDataSource implements DataSourceInterface
         $this->pdo->exec('
             CREATE TABLE IF NOT EXISTS t_project (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE
+                name TEXT NOT NULL UNIQUE,
+                archived INTEGER NOT NULL DEFAULT 0
             )
         ');
 
+        $this->migrateProjectTable();
+
         $this->pdo->exec(sprintf(
-            "INSERT OR IGNORE INTO t_project (id, name) VALUES (%d, '%s')",
+            "INSERT OR IGNORE INTO t_project (id, name, archived) VALUES (%d, '%s', 0)",
             self::DEFAULT_PROJECT_ID,
             self::DEFAULT_PROJECT_NAME,
         ));
 
         $this->migrateActivityTable();
         $this->migrateSyncQueueTable();
+    }
+
+    /**
+     * Adds the `archived` flag to a local project cache created before
+     * archiving existed.
+     */
+    private function migrateProjectTable(): void
+    {
+        if ($this->columnExists('t_project', 'archived')) {
+            return;
+        }
+
+        $this->pdo->exec('ALTER TABLE t_project ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
     }
 
     /**
@@ -127,7 +143,7 @@ class LocalDataSource implements DataSourceInterface
 
     public function getProjects(): array
     {
-        $statement = $this->pdo->query('SELECT id, name FROM t_project ORDER BY name');
+        $statement = $this->pdo->query('SELECT id, name FROM t_project WHERE archived = 0 ORDER BY name');
         return array_map(
             fn ($project) => ['id' => (int)$project['id'], 'name' => $project['name']],
             $statement->fetchAll(),
@@ -136,7 +152,7 @@ class LocalDataSource implements DataSourceInterface
 
     public function getProjectById(int $id): ?array
     {
-        $statement = $this->pdo->prepare('SELECT id, name FROM t_project WHERE id = :id');
+        $statement = $this->pdo->prepare('SELECT id, name, archived FROM t_project WHERE id = :id');
         $statement->execute(['id' => $id]);
         $result = $statement->fetch();
 
@@ -144,13 +160,19 @@ class LocalDataSource implements DataSourceInterface
             return null;
         }
 
-        return ['id' => (int)$result['id'], 'name' => $result['name']];
+        return [
+            'id' => (int)$result['id'],
+            'name' => $result['name'],
+            'archived' => (bool)$result['archived'],
+        ];
     }
 
     /**
-     * Replace the full local project cache with the given projects (used during sync).
+     * Replace the full local project cache with the given projects (used during
+     * sync). Archived projects are mirrored too, so that unarchiving on the
+     * remote propagates on the next sync.
      *
-     * @param array<array{id: int, name: string}> $projects
+     * @param array<array{id: int, name: string, archived?: bool}> $projects
      */
     public function replaceAllProjects(array $projects): void
     {
@@ -159,13 +181,14 @@ class LocalDataSource implements DataSourceInterface
             $this->pdo->exec('DELETE FROM t_project');
 
             $statement = $this->pdo->prepare(
-                'INSERT INTO t_project (id, name) VALUES (:id, :name)',
+                'INSERT INTO t_project (id, name, archived) VALUES (:id, :name, :archived)',
             );
 
             foreach ($projects as $project) {
                 $statement->execute([
                     'id' => $project['id'],
                     'name' => $project['name'],
+                    'archived' => !empty($project['archived']) ? 1 : 0,
                 ]);
             }
 

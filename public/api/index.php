@@ -94,8 +94,56 @@ $app->post('/projects', function (Request $request, Response $response) use ($co
 
         return jsonResponse($response, [
             'success' => true,
-            'data' => $project,
+            'data' => ActivityService::describeProject($project),
         ], 201);
+    } catch (\Exception $e) {
+        return jsonResponse($response, [
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
+// DELETE /projects/{id} - Delete (archive) a project
+// The project and its activities are kept in the database behind an `archived`
+// flag, so the delete is reversible. Requires an online remote connection,
+// mirroring POST /projects.
+$app->delete('/projects/{id:[0-9]+}', function (Request $request, Response $response, array $args) use ($connectionManager) {
+    try {
+        $projectId = (int)$args['id'];
+
+        if (!ActivityService::isProjectDeletable($projectId)) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'The default project cannot be deleted',
+            ], 400);
+        }
+
+        $remoteDataSource = $connectionManager->getRemoteDataSource();
+        if (!$connectionManager->isOnline() || !$remoteDataSource) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'Cannot delete a project while offline',
+            ], 400);
+        }
+
+        $project = $remoteDataSource->getProjectById($projectId);
+        if (!$project || $project['archived']) {
+            return jsonResponse($response, [
+                'success' => false,
+                'error' => 'Project not found',
+            ], 404);
+        }
+
+        $remoteDataSource->archiveProject($projectId);
+
+        return jsonResponse($response, [
+            'success' => true,
+            'data' => [
+                'deleted' => $project['name'],
+                'archived' => true,
+            ],
+        ]);
     } catch (\Exception $e) {
         return jsonResponse($response, [
             'success' => false,

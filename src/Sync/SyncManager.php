@@ -22,7 +22,7 @@ class SyncManager
 
     public function syncFromRemote(): void
     {
-        $this->localDataSource->replaceAllProjects($this->remoteDataSource->getProjects());
+        $this->localDataSource->replaceAllProjects($this->remoteDataSource->getAllProjectsForSync());
         $this->localDataSource->replaceAllActivities($this->remoteDataSource->getAllActivitiesForSync());
     }
 

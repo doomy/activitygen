@@ -9,6 +9,12 @@ class ActivityService
     private const MINIMUM_PRIORITY = 0.1;
     private const PRIORITY_ADJUSTMENT = 0.1;
 
+    /**
+     * The project the CLI always operates on. It is protected from deletion so
+     * that `./bin/ag` always has a project to work with.
+     */
+    public const DEFAULT_PROJECT_ID = 1;
+
     private DataSourceInterface $dataSource;
 
     public function __construct(DataSourceInterface $dataSource)
@@ -19,11 +25,38 @@ class ActivityService
     /**
      * Get all projects
      *
-     * @return array<array{id: int, name: string}>
+     * @return array<array{id: int, name: string, deletable: bool}>
      */
     public function getProjects(): array
     {
-        return $this->dataSource->getProjects();
+        return array_map(
+            static fn (array $project) => self::describeProject($project),
+            $this->dataSource->getProjects(),
+        );
+    }
+
+    /**
+     * Annotate a project with whether clients are allowed to delete it.
+     * Any other keys the data source provided are preserved.
+     *
+     * @param array{id: int|string, name: string} $project
+     * @return array{id: int, name: string, deletable: bool}
+     */
+    public static function describeProject(array $project): array
+    {
+        return array_merge($project, [
+            'id' => (int)$project['id'],
+            'name' => $project['name'],
+            'deletable' => self::isProjectDeletable((int)$project['id']),
+        ]);
+    }
+
+    /**
+     * Whether a project may be deleted
+     */
+    public static function isProjectDeletable(int $projectId): bool
+    {
+        return $projectId !== self::DEFAULT_PROJECT_ID;
     }
 
     /**
