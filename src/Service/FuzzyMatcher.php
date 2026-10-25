@@ -70,6 +70,51 @@ final class FuzzyMatcher
     ];
 
     /**
+     * Rank a list of activities against a query.
+     *
+     * Non-matching activities are dropped; the rest come back best match
+     * first, each with the character offsets that matched. Ties fall back to
+     * priority and then name, so the order is stable. An empty query returns
+     * the list untouched.
+     *
+     * Both frontends filter the list they already hold rather than asking the
+     * API per keystroke, so this is mirrored in public/fuzzy.js. Keep the two
+     * in step.
+     *
+     * @param array<array{activity: string, priority: float}> $activities
+     * @return array<array{activity: string, priority: float, matched?: int[]}>
+     */
+    public static function rank(string $query, array $activities): array
+    {
+        $query = trim($query);
+
+        if ($query === '') {
+            return $activities;
+        }
+
+        $ranked = [];
+
+        foreach ($activities as $activity) {
+            $match = self::match($query, $activity['activity']);
+
+            if ($match === null) {
+                continue;
+            }
+
+            $activity['matched'] = $match['matched'];
+            $ranked[] = ['score' => $match['score'], 'activity' => $activity];
+        }
+
+        usort($ranked, static function (array $a, array $b) {
+            return $b['score'] <=> $a['score']
+                ?: (float)$b['activity']['priority'] <=> (float)$a['activity']['priority']
+                ?: strcmp($a['activity']['activity'], $b['activity']['activity']);
+        });
+
+        return array_column($ranked, 'activity');
+    }
+
+    /**
      * Match $query against $subject.
      *
      * @return array{score: int, matched: int[]}|null Null when it does not match

@@ -40,20 +40,9 @@ class ApiClient
         return $this->request('DELETE', '/projects/' . $projectId);
     }
 
-    /**
-     * Lists a project's activities, fuzzy-filtered by $query when it is not
-     * empty. The API does the matching and ranking, so the TUI and the web
-     * frontend show the same results in the same order.
-     */
-    public function getActivities(int $projectId, string $query = ''): array
+    public function getActivities(int $projectId): array
     {
-        $params = ['project_id' => $projectId];
-
-        if ($query !== '') {
-            $params['q'] = $query;
-        }
-
-        return $this->request('GET', '/activities?' . http_build_query($params));
+        return $this->request('GET', '/activities?' . http_build_query(['project_id' => $projectId]));
     }
 
     public function getSuggestion(int $projectId): array

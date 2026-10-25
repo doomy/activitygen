@@ -2,6 +2,8 @@
 
 namespace App\Tui;
 
+use App\Service\FuzzyMatcher;
+
 /**
  * Full-screen keyboard-driven TUI mirroring the web frontend (public/app.js).
  *
@@ -40,6 +42,9 @@ class TuiApplication
     private ?array $suggestion = null;
     private bool $suggestLoading = false;
 
+    /** @var array<array{activity: string, priority: float}> Everything the project has */
+    private array $allActivities = [];
+    /** @var array<array{activity: string, priority: float, matched?: int[]}> What the list shows */
     private array $activities = [];
     private ?string $activitiesError = null;
     private string $searchQuery = '';
@@ -279,21 +284,26 @@ class TuiApplication
         }
 
         try {
-            $activities = array_values($this->api->getActivities($this->projectId, $this->searchQuery));
-
-            // Without a query the API returns the plain list, so sort it here
-            // as before. With one it comes back best match first, which we keep.
-            if ($this->searchQuery === '') {
-                usort($activities, static fn(array $a, array $b) => (float)$b['priority'] <=> (float)$a['priority']);
-            }
-
-            $this->activities = $activities;
+            $activities = array_values($this->api->getActivities($this->projectId));
+            usort($activities, static fn(array $a, array $b) => (float)$b['priority'] <=> (float)$a['priority']);
+            $this->allActivities = $activities;
             $this->activitiesError = null;
         } catch (ApiException $e) {
-            $this->activities = [];
+            $this->allActivities = [];
             $this->activitiesError = $e->getMessage();
         }
 
+        $this->applyFilter();
+    }
+
+    /**
+     * Narrows the loaded list to the current search. Filtering here rather
+     * than through the API is what keeps typing instant; FuzzyMatcher is the
+     * same code the web frontend mirrors in public/fuzzy.js.
+     */
+    private function applyFilter(): void
+    {
+        $this->activities = FuzzyMatcher::rank($this->searchQuery, $this->allActivities);
         $this->selected = max(0, min($this->selected, count($this->activities) - 1));
         $this->dirty = true;
     }
@@ -527,17 +537,13 @@ class TuiApplication
                     return;
                 }
                 $this->searchQuery = $this->removeLastChar($this->searchQuery);
-                $this->selected = 0;
-                $this->scroll = 0;
-                $this->loadActivities();
+                $this->refilter();
                 return;
         }
 
         if (strlen($key) === 1 && ord($key) >= 0x20) {
             $this->searchQuery .= $key;
-            $this->selected = 0;
-            $this->scroll = 0;
-            $this->loadActivities();
+            $this->refilter();
         }
     }
 
@@ -549,9 +555,14 @@ class TuiApplication
         }
 
         $this->searchQuery = '';
+        $this->refilter();
+    }
+
+    private function refilter(): void
+    {
         $this->selected = 0;
         $this->scroll = 0;
-        $this->loadActivities();
+        $this->applyFilter();
     }
 
     private function handleConfirmDeleteKey(string $key): void
