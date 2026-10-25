@@ -19,6 +19,7 @@ class TuiApplication
     private const MODE_CONFIRM_DELETE = 'confirm_delete';
     private const MODE_CONFIRM_DELETE_PROJECT = 'confirm_delete_project';
     private const MODE_PROJECT_PICKER = 'project_picker';
+    private const MODE_SEARCH = 'search';
 
     private const VIEW_SUGGEST = 'suggest';
     private const VIEW_MANAGE = 'manage';
@@ -41,6 +42,7 @@ class TuiApplication
 
     private array $activities = [];
     private ?string $activitiesError = null;
+    private string $searchQuery = '';
     private int $selected = 0;
     private int $scroll = 0;
 
@@ -151,6 +153,7 @@ class TuiApplication
         $this->projectId = $projectId;
         $this->storeProjectId($projectId);
         $this->resetSuggestion();
+        $this->searchQuery = '';
         $this->selected = 0;
         $this->scroll = 0;
         if ($this->view === self::VIEW_MANAGE) {
@@ -276,8 +279,14 @@ class TuiApplication
         }
 
         try {
-            $activities = array_values($this->api->getActivities($this->projectId));
-            usort($activities, static fn(array $a, array $b) => (float)$b['priority'] <=> (float)$a['priority']);
+            $activities = array_values($this->api->getActivities($this->projectId, $this->searchQuery));
+
+            // Without a query the API returns the plain list, so sort it here
+            // as before. With one it comes back best match first, which we keep.
+            if ($this->searchQuery === '') {
+                usort($activities, static fn(array $a, array $b) => (float)$b['priority'] <=> (float)$a['priority']);
+            }
+
             $this->activities = $activities;
             $this->activitiesError = null;
         } catch (ApiException $e) {
@@ -390,6 +399,9 @@ class TuiApplication
             case self::MODE_PROJECT_PICKER:
                 $this->handlePickerKey($key);
                 return;
+            case self::MODE_SEARCH:
+                $this->handleSearchKey($key);
+                return;
         }
 
         // Global keys
@@ -472,6 +484,15 @@ class TuiApplication
             case 'A':
                 $this->startInput('add_activity', 'name');
                 return;
+            case '/':
+                $this->mode = self::MODE_SEARCH;
+                $this->dirty = true;
+                return;
+            case Terminal::KEY_ESC:
+                if ($this->searchQuery !== '') {
+                    $this->clearSearch();
+                }
+                return;
             case 'd':
             case 'D':
             case 'x':
@@ -482,6 +503,55 @@ class TuiApplication
                 }
                 return;
         }
+    }
+
+    /**
+     * Live filtering: every keystroke re-queries the API, so the TUI ranks and
+     * highlights exactly like the web frontend.
+     */
+    private function handleSearchKey(string $key): void
+    {
+        switch ($key) {
+            case Terminal::KEY_ENTER:
+                // Keep the filter, go back to moving through the results
+                $this->mode = self::MODE_NORMAL;
+                $this->dirty = true;
+                return;
+            case Terminal::KEY_ESC:
+            case Terminal::KEY_CTRL_C:
+                $this->mode = self::MODE_NORMAL;
+                $this->clearSearch();
+                return;
+            case Terminal::KEY_BACKSPACE:
+                if ($this->searchQuery === '') {
+                    return;
+                }
+                $this->searchQuery = $this->removeLastChar($this->searchQuery);
+                $this->selected = 0;
+                $this->scroll = 0;
+                $this->loadActivities();
+                return;
+        }
+
+        if (strlen($key) === 1 && ord($key) >= 0x20) {
+            $this->searchQuery .= $key;
+            $this->selected = 0;
+            $this->scroll = 0;
+            $this->loadActivities();
+        }
+    }
+
+    private function clearSearch(): void
+    {
+        if ($this->searchQuery === '') {
+            $this->dirty = true;
+            return;
+        }
+
+        $this->searchQuery = '';
+        $this->selected = 0;
+        $this->scroll = 0;
+        $this->loadActivities();
     }
 
     private function handleConfirmDeleteKey(string $key): void
@@ -782,6 +852,7 @@ class TuiApplication
     {
         $lines = match ($this->mode) {
             self::MODE_PROJECT_PICKER => $this->renderProjectPicker($w, $height),
+            self::MODE_SEARCH => $this->renderManageView($w, $height),
             self::MODE_INPUT => $this->renderInputForm($w),
             self::MODE_CONFIRM_DELETE => $this->renderConfirmDelete($w),
             self::MODE_CONFIRM_DELETE_PROJECT => $this->renderConfirmDeleteProject($w),
@@ -838,24 +909,97 @@ class TuiApplication
         $count = count($this->activities);
         $lines[] = "\e[1m" . $this->fit(" Activities ($count)", $w) . "\e[0m";
 
+        $searching = $this->mode === self::MODE_SEARCH;
+
+        if ($searching || $this->searchQuery !== '') {
+            $suffix = $searching ? '▌' : '    [/] edit · [esc] clear';
+            $lines[] = "\e[36m" . $this->fit(' Search: ' . $this->searchQuery . $suffix, $w) . "\e[0m";
+        }
+
         if ($count === 0) {
             $lines[] = '';
-            $lines[] = "\e[2m" . $this->fit(' No activities yet. Press [a] to add one!', $w) . "\e[0m";
+            $lines[] = "\e[2m" . $this->fit(
+                $this->searchQuery === ''
+                    ? ' No activities yet. Press [a] to add one!'
+                    : " No activity matches \"{$this->searchQuery}\"",
+                $w
+            ) . "\e[0m";
             return $lines;
         }
 
-        $listHeight = max(1, $height - 1);
+        $listHeight = max(1, $height - count($lines));
         $this->adjustScroll($listHeight);
 
         $visible = array_slice($this->activities, $this->scroll, $listHeight, true);
         foreach ($visible as $i => $activity) {
-            $name = (string)$activity['activity'];
-            $priority = number_format((float)$activity['priority'], 1);
-            $row = $this->row('  ' . $name, "priority $priority  ", $w);
-            $lines[] = $i === $this->selected ? "\e[7m" . $row . "\e[0m" : $row;
+            $lines[] = $this->renderActivityRow($activity, $w, $i === $this->selected);
         }
 
         return $lines;
+    }
+
+    /**
+     * One row of the activities list: indented name on the left, priority on
+     * the right, with any matched characters highlighted.
+     */
+    private function renderActivityRow(array $activity, int $w, bool $selected): string
+    {
+        $name = (string)$activity['activity'];
+        $right = 'priority ' . number_format((float)$activity['priority'], 1) . '  ';
+
+        // Fitting the name here, rather than letting row() do it, is what tells
+        // us how much of it is on screen and may carry a highlight
+        $indent = 2;
+        $maxName = max(1, $w - $this->uwidth($right) - $indent - 1);
+        $nameWidth = $this->uwidth($name);
+        // A name fit() had to cut ends in an ellipsis, which never matched
+        $highlightable = $nameWidth > $maxName ? $maxName - 1 : $nameWidth;
+
+        $row = $this->row(str_repeat(' ', $indent) . $this->fit($name, $maxName), $right, $w);
+        $row = $this->highlightMatch($row, $indent, $highlightable, $activity['matched'] ?? []);
+
+        return $selected ? "\e[7m" . $row . "\e[0m" : $row;
+    }
+
+    /**
+     * Wraps the characters the API reported as matched in colour.
+     *
+     * Only escape sequences are inserted, so the row keeps its width. The
+     * highlight closes with "normal intensity, default colour" rather than a
+     * full reset, which would also cancel the inverse video of a selected row.
+     *
+     * @param int $offset Character position in $row where the matched text starts
+     * @param int $limit How many characters from $offset may be highlighted
+     * @param int[] $matched
+     */
+    private function highlightMatch(string $row, int $offset, int $limit, array $matched): string
+    {
+        if ($matched === [] || $limit <= 0) {
+            return $row;
+        }
+
+        $positions = array_flip($matched);
+        preg_match_all('/\X/u', $row, $chars);
+
+        $out = '';
+        $open = false;
+
+        foreach ($chars[0] as $index => $char) {
+            $position = $index - $offset;
+            $isMatch = $position >= 0 && $position < $limit && isset($positions[$position]);
+
+            if ($isMatch && !$open) {
+                $out .= "\e[1;33m";
+                $open = true;
+            } elseif (!$isMatch && $open) {
+                $out .= "\e[22;39m";
+                $open = false;
+            }
+
+            $out .= $char;
+        }
+
+        return $open ? $out . "\e[22;39m" : $out;
     }
 
     private function renderProjectPicker(int $w, int $height): array
@@ -952,9 +1096,10 @@ class TuiApplication
             self::MODE_INPUT => 'enter confirm · esc cancel',
             self::MODE_CONFIRM_DELETE, self::MODE_CONFIRM_DELETE_PROJECT => 'y delete · n cancel',
             self::MODE_PROJECT_PICKER => '↑↓ move · enter select · a add · d delete · esc close',
+            self::MODE_SEARCH => 'type to filter · enter keep filter · esc clear',
             default => $this->view === self::VIEW_SUGGEST
                 ? 'space next · + up · - down · tab/1/2 view · p project · s sync · r refresh · q quit'
-                : '↑↓ move · a add · d delete · tab/1/2 view · p project · s sync · r refresh · q quit',
+                : '↑↓ move · a add · d delete · / search · tab/1/2 view · p project · s sync · r refresh · q quit',
         };
     }
 

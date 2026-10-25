@@ -66,7 +66,8 @@ Override the API base URL (defaults to `http://nginx/api` inside Docker, `http:/
 Keyboard controls:
 - Global: `1`/`2`/`Tab` switch view, `p` project picker, `s` manual sync, `r` refresh, `q` quit
 - Suggestions view: `Space`/`Enter`/`n` next suggestion, `+`/`=` thumbs up, `-`/`_` thumbs down
-- Manage view: `↑`/`↓` (or `k`/`j`) navigate, `a` add activity, `d`/`Delete` delete (with `y`/`n` confirm)
+- Manage view: `↑`/`↓` (or `k`/`j`) navigate, `a` add activity, `d`/`Delete` delete (with `y`/`n` confirm), `/` search, `Esc` clear the search
+- Search (in Manage view): type to filter as you go, `Enter` keeps the filter and returns to the list, `Esc` clears it
 - Project picker: `↑`/`↓` navigate, `Enter` select, `a` add project, `d`/`Delete` delete project (with `y`/`n` confirm), `Esc` close
 - Text input: type, `Enter` confirm, `Esc` cancel
 
@@ -156,6 +157,15 @@ docker compose run --rm app php bin/console <command>
   - Handles priority adjustments with proper bounds checking
   - Manages activity CRUD operations
   - Encapsulates business rules (min priority, adjustment increment)
+  - `searchActivities()` fuzzy-filters and ranks a project's activities
+- `FuzzyMatcher`: Subsequence matching with fzf-style scoring, used by
+  `searchActivities()`. A query matches when its characters appear in order,
+  not necessarily adjacent ("wtt" matches "Water the tomatoes"). The score
+  favours matches that start a word, run without gaps and cover a short
+  stretch. Matching ignores ASCII case and Latin diacritics ("cesky" finds
+  "česky"), and returns character offsets, not byte offsets. It lives in the
+  service layer so that the web frontend and the TUI, which both search
+  through the API, rank and highlight results identically.
 
 **Commands** (`src/Command/`)
 - `GetActivityCommand`: Main interactive loop for activity selection with priority adjustments
@@ -176,7 +186,10 @@ docker compose run --rm app php bin/console <command>
     connection). This is a soft delete: the project row is flagged `archived`
     and its activities are left untouched, so nothing is lost. The default
     project (id 1) cannot be deleted because the CLI is pinned to it.
-  - `GET /api/activities?project_id=` - List all activities in a project
+  - `GET /api/activities?project_id=&q=` - List the activities in a project.
+    With `q` the list is fuzzy-filtered and comes back best match first, each
+    item carrying a `matched` array of character offsets for highlighting.
+    Without `q` the behaviour is unchanged.
   - `GET /api/activities/suggest?project_id=` - Get random activity suggestion from a project
   - `POST /api/activities` - Add new activity (`project_id` in body)
   - `DELETE /api/activities/{name}?project_id=` - Delete activity
@@ -194,8 +207,8 @@ docker compose run --rm app php bin/console <command>
 - Full-screen, completely keyboard-controlled terminal UI mirroring the web frontend
 - Talks to the same REST API as the web frontend via `ApiClient` (`src/Tui/ApiClient.php`) — it never touches the database or ActivityService directly, keeping behavior uniform across frontends
 - `Terminal` (`src/Tui/Terminal.php`): raw mode via `stty`, alternate screen buffer, ANSI rendering, escape-sequence key decoding
-- `TuiApplication` (`src/Tui/TuiApplication.php`): views (Suggestions / Manage Activities), project picker (add and delete projects), add/delete flows, delete confirmation, sync status polling every 5s, transient notifications
-- Same behavior as the web UI: thumbs up resets to the initial state, thumbs down auto-advances to the next suggestion; activities list sorted by priority descending
+- `TuiApplication` (`src/Tui/TuiApplication.php`): views (Suggestions / Manage Activities), project picker (add and delete projects), add/delete flows, delete confirmation, live fuzzy search over the activities list, sync status polling every 5s, transient notifications
+- Same behavior as the web UI: thumbs up resets to the initial state, thumbs down auto-advances to the next suggestion; activities list sorted by priority descending, or by match quality while a search is active
 - Active project id persisted in `data/tui_state.json` (the TUI counterpart of the web app's `localStorage`)
 - Runs as the `tui` Docker Compose service on the `activitygen` network, reaching the API at `http://nginx/api`; `./bin/tui` is the wrapper (its `depends_on` starts nginx + web automatically)
 
@@ -206,7 +219,9 @@ docker compose run --rm app php bin/console <command>
   delete the active project (disabled for the default project)
 - Two main views:
   - **Suggestions View**: Display activity suggestions with thumbs up/down buttons for priority adjustment
-  - **Manage Activities View**: List, add, and delete activities
+  - **Manage Activities View**: List, add, and delete activities, with a
+    fuzzy search box that filters the list (debounced, matched characters
+    highlighted)
 - Real-time sync status indicator with auto-polling
 - Responsive design for mobile and desktop
 
@@ -302,7 +317,7 @@ Offline behavior:
 
 - `bin/`: Entry scripts (console and tui-app PHP scripts; ag, web and tui shell wrappers)
 - `src/`: Application source code with PSR-4 autoloading (`App\` namespace)
-- `src/Service/`: Shared business logic layer
+- `src/Service/`: Shared business logic layer (ActivityService, FuzzyMatcher)
 - `src/Command/`: Symfony Console command classes
 - `src/DataSource/`: Data access layer with interface and implementations
 - `src/Sync/`: Synchronization management

@@ -406,6 +406,58 @@ h1 {
     font-size: 1em;
 }
 
+.search-bar {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.search-bar input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 38px 10px 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1em;
+}
+
+/* The native clear affordance would sit on top of our own button */
+.search-bar input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.btn-clear-search {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #e5e7eb;
+    color: #4b5563;
+    font-size: 0.95em;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-clear-search:hover {
+    background: #d1d5db;
+}
+
+.btn-clear-search.hidden {
+    display: none;
+}
+
+.activity-item-name mark {
+    background: #fde68a;
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 1px;
+}
+
 .activities-list {
     background: white;
     border-radius: 15px;

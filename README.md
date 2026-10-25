@@ -12,6 +12,7 @@ ActivityGen helps you choose activities using a priority-based random selection 
 - **Projects**: Group activities into separate projects and switch which one you're drawing suggestions from (web interface). Deleting a project archives it, so its activities are never lost
 - **Priority-weighted selection**: Activities with higher priorities are more likely to be chosen
 - **Real-time adjustments**: Adjust activity priorities on-the-fly
+- **Fuzzy search**: Filter the activity list by typing a few characters; "wtt" finds "Water the tomatoes" and accents are ignored
 - **Offline support**: Works offline with automatic sync when reconnected
 - **Shared backend**: Both interfaces use the same business logic
 - **Docker support**: Easy setup and execution with Docker Compose
@@ -61,7 +62,7 @@ Access at: **http://localhost:8080** (or your overridden port)
 The web interface provides:
 - **Project selector**: Switch which project's activities you're suggesting from, add a new project with the "+" button, or delete the active project with the "🗑" button (both require an online connection). Deleting archives the project instead of erasing it: its activities stay in the database, and adding a project with the same name again brings it back. The default project the CLI uses cannot be deleted
 - **Suggestions Tab**: Get activity suggestions with 👍/👎 buttons to adjust priorities
-- **Manage Activities Tab**: View, add, and delete activities within the selected project
+- **Manage Activities Tab**: View, add, and delete activities within the selected project, with a search box that fuzzy-filters the list and highlights what matched
 - **Sync Status**: Real-time online/offline status indicator
 
 Stop the web application:
