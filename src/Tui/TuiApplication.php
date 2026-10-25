@@ -17,6 +17,7 @@ class TuiApplication
     private const MODE_NORMAL = 'normal';
     private const MODE_INPUT = 'input';
     private const MODE_CONFIRM_DELETE = 'confirm_delete';
+    private const MODE_CONFIRM_DELETE_PROJECT = 'confirm_delete_project';
     private const MODE_PROJECT_PICKER = 'project_picker';
 
     private const VIEW_SUGGEST = 'suggest';
@@ -162,14 +163,60 @@ class TuiApplication
     {
         try {
             $project = $this->api->addProject($name);
-            $this->projects[] = $project;
-            $this->notify("Project \"$name\" added", 'success');
+            $this->notify(
+                !empty($project['restored'])
+                    ? "Project \"{$project['name']}\" restored"
+                    : "Project \"$name\" added",
+                'success',
+            );
+
+            // reloadProjects() honours the stored id, so the new project ends up
+            // selected while the list keeps the API's ordering.
+            $this->storeProjectId((int)$project['id']);
+            $this->reloadProjects();
             $this->switchProject((int)$project['id']);
+
             return true;
         } catch (ApiException $e) {
             $this->notify($e->getMessage(), 'error');
             return false;
         }
+    }
+
+    /**
+     * Deletes the project highlighted in the picker. The API archives it, so
+     * its activities stay in the database.
+     */
+    private function deleteHighlightedProject(): void
+    {
+        $project = $this->projects[$this->pickerIndex] ?? null;
+
+        if ($project === null) {
+            return;
+        }
+
+        try {
+            $this->api->deleteProject((int)$project['id']);
+            $this->notify("Project \"{$project['name']}\" deleted", 'success');
+        } catch (ApiException $e) {
+            $this->notify($e->getMessage(), 'error');
+            return;
+        }
+
+        $previousProjectId = $this->projectId;
+
+        try {
+            $this->reloadProjects();
+        } catch (ApiException $e) {
+            $this->notify($e->getMessage(), 'error');
+        }
+
+        // Deleting the active project moves us to whichever one is left
+        if ($this->projectId !== null && $this->projectId !== $previousProjectId) {
+            $this->switchProject($this->projectId);
+        }
+
+        $this->pickerIndex = max(0, min($this->pickerIndex, count($this->projects) - 1));
     }
 
     private function nextSuggestion(): void
@@ -337,6 +384,9 @@ class TuiApplication
             case self::MODE_CONFIRM_DELETE:
                 $this->handleConfirmDeleteKey($key);
                 return;
+            case self::MODE_CONFIRM_DELETE_PROJECT:
+                $this->handleConfirmDeleteProjectKey($key);
+                return;
             case self::MODE_PROJECT_PICKER:
                 $this->handlePickerKey($key);
                 return;
@@ -443,6 +493,16 @@ class TuiApplication
         $this->dirty = true;
     }
 
+    private function handleConfirmDeleteProjectKey(string $key): void
+    {
+        // Cancelling returns to the picker the delete was started from
+        $this->mode = self::MODE_PROJECT_PICKER;
+        if ($key === 'y' || $key === 'Y') {
+            $this->deleteHighlightedProject();
+        }
+        $this->dirty = true;
+    }
+
     private function openProjectPicker(): void
     {
         $this->mode = self::MODE_PROJECT_PICKER;
@@ -486,6 +546,12 @@ class TuiApplication
             case '+':
                 $this->startInput('add_project', 'name');
                 return;
+            case 'd':
+            case 'D':
+            case 'x':
+            case Terminal::KEY_DELETE:
+                $this->startProjectDelete();
+                return;
             case Terminal::KEY_ESC:
             case 'p':
             case 'q':
@@ -493,6 +559,23 @@ class TuiApplication
                 $this->dirty = true;
                 return;
         }
+    }
+
+    private function startProjectDelete(): void
+    {
+        $project = $this->projects[$this->pickerIndex] ?? null;
+
+        if ($project === null) {
+            return;
+        }
+
+        if (empty($project['deletable'])) {
+            $this->notify("Project \"{$project['name']}\" cannot be deleted", 'error');
+            return;
+        }
+
+        $this->mode = self::MODE_CONFIRM_DELETE_PROJECT;
+        $this->dirty = true;
     }
 
     private function startInput(string $flow, string $step): void
@@ -701,6 +784,7 @@ class TuiApplication
             self::MODE_PROJECT_PICKER => $this->renderProjectPicker($w, $height),
             self::MODE_INPUT => $this->renderInputForm($w),
             self::MODE_CONFIRM_DELETE => $this->renderConfirmDelete($w),
+            self::MODE_CONFIRM_DELETE_PROJECT => $this->renderConfirmDeleteProject($w),
             default => $this->view === self::VIEW_SUGGEST
                 ? $this->renderSuggestView($w, $height)
                 : $this->renderManageView($w, $height),
@@ -832,6 +916,25 @@ class TuiApplication
         ];
     }
 
+    private function renderConfirmDeleteProject(int $w): array
+    {
+        $name = (string)($this->projects[$this->pickerIndex]['name'] ?? '');
+
+        return [
+            '',
+            "\e[1;31m" . $this->fit(" Delete project \"$name\"? [y/n]", $w) . "\e[0m",
+            '',
+            "\e[2m" . $this->fit(
+                ' It is archived rather than erased, so its activities stay in the',
+                $w
+            ) . "\e[0m",
+            "\e[2m" . $this->fit(
+                ' database and re-adding the same name brings it back.',
+                $w
+            ) . "\e[0m",
+        ];
+    }
+
     private function renderNotification(int $w): string
     {
         if ($this->notification === null) {
@@ -847,8 +950,8 @@ class TuiApplication
     {
         return match ($this->mode) {
             self::MODE_INPUT => 'enter confirm · esc cancel',
-            self::MODE_CONFIRM_DELETE => 'y delete · n cancel',
-            self::MODE_PROJECT_PICKER => '↑↓ move · enter select · a add project · esc close',
+            self::MODE_CONFIRM_DELETE, self::MODE_CONFIRM_DELETE_PROJECT => 'y delete · n cancel',
+            self::MODE_PROJECT_PICKER => '↑↓ move · enter select · a add · d delete · esc close',
             default => $this->view === self::VIEW_SUGGEST
                 ? 'space next · + up · - down · tab/1/2 view · p project · s sync · r refresh · q quit'
                 : '↑↓ move · a add · d delete · tab/1/2 view · p project · s sync · r refresh · q quit',

@@ -9,7 +9,7 @@ ActivityGen helps you choose activities using a priority-based random selection 
 ## Features
 
 - **Dual Interface**: Use either command-line or web browser
-- **Projects**: Group activities into separate projects and switch which one you're drawing suggestions from (web interface)
+- **Projects**: Group activities into separate projects and switch which one you're drawing suggestions from (web interface). Deleting a project archives it, so its activities are never lost
 - **Priority-weighted selection**: Activities with higher priorities are more likely to be chosen
 - **Real-time adjustments**: Adjust activity priorities on-the-fly
 - **Offline support**: Works offline with automatic sync when reconnected
@@ -59,7 +59,7 @@ cp env/.web.sample env/.web
 Access at: **http://localhost:8080** (or your overridden port)
 
 The web interface provides:
-- **Project selector**: Switch which project's activities you're suggesting from, or add a new project with the "+" button (adding a project requires an online connection)
+- **Project selector**: Switch which project's activities you're suggesting from, add a new project with the "+" button, or delete the active project with the "🗑" button (both require an online connection). Deleting archives the project instead of erasing it: its activities stay in the database, and adding a project with the same name again brings it back. The default project the CLI uses cannot be deleted
 - **Suggestions Tab**: Get activity suggestions with 👍/👎 buttons to adjust priorities
 - **Manage Activities Tab**: View, add, and delete activities within the selected project
 - **Sync Status**: Real-time online/offline status indicator
@@ -122,7 +122,8 @@ When an activity is displayed:
 ```sql
 CREATE TABLE t_project (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(180) NOT NULL UNIQUE
+    name VARCHAR(180) NOT NULL UNIQUE,
+    archived TINYINT(1) NOT NULL DEFAULT 0
 );
 
 CREATE TABLE t_activity (
@@ -135,8 +136,11 @@ CREATE TABLE t_activity (
 );
 ```
 
+The `archived` column is added automatically on connect if an existing
+`t_project` table does not have it yet.
+
 **Local (SQLite):** Automatically created (and migrated in place, for any
-local database predating projects) for offline support
+local database predating projects or project archiving) for offline support
 
 ## How It Works
 

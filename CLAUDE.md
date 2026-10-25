@@ -67,7 +67,7 @@ Keyboard controls:
 - Global: `1`/`2`/`Tab` switch view, `p` project picker, `s` manual sync, `r` refresh, `q` quit
 - Suggestions view: `Space`/`Enter`/`n` next suggestion, `+`/`=` thumbs up, `-`/`_` thumbs down
 - Manage view: `↑`/`↓` (or `k`/`j`) navigate, `a` add activity, `d`/`Delete` delete (with `y`/`n` confirm)
-- Project picker: `↑`/`↓` navigate, `Enter` select, `a` add project, `Esc` close
+- Project picker: `↑`/`↓` navigate, `Enter` select, `a` add project, `d`/`Delete` delete project (with `y`/`n` confirm), `Esc` close
 - Text input: type, `Enter` confirm, `Esc` cancel
 
 ### Activity Management
@@ -167,8 +167,15 @@ docker compose run --rm app php bin/console <command>
 **Web API** (`public/api/`)
 - REST API built with Slim Framework
 - Endpoints:
-  - `GET /api/projects` - List all projects
-  - `POST /api/projects` - Add a new project (requires an online remote connection)
+  - `GET /api/projects` - List all projects that are not archived; each carries a
+    `deletable` flag (false for the default project the CLI uses)
+  - `POST /api/projects` - Add a new project, or restore the archived project of
+    that name (requires an online remote connection); the response carries
+    `restored: true` when it un-archived an existing project
+  - `DELETE /api/projects/{id}` - Delete a project (requires an online remote
+    connection). This is a soft delete: the project row is flagged `archived`
+    and its activities are left untouched, so nothing is lost. The default
+    project (id 1) cannot be deleted because the CLI is pinned to it.
   - `GET /api/activities?project_id=` - List all activities in a project
   - `GET /api/activities/suggest?project_id=` - Get random activity suggestion from a project
   - `POST /api/activities` - Add new activity (`project_id` in body)
@@ -180,12 +187,14 @@ docker compose run --rm app php bin/console <command>
 - Activities are scoped to a project (`t_project`); the web frontend keeps the
   active project id in `localStorage` and passes it with every request. CLI
   commands are unaffected and operate against a fixed "Default" project (id 1).
+- Project writes (add, delete) go straight to `RemoteDataSource` and require an
+  online connection; they are never queued for offline sync.
 
 **TUI Frontend** (`src/Tui/`, `bin/tui-app`)
 - Full-screen, completely keyboard-controlled terminal UI mirroring the web frontend
 - Talks to the same REST API as the web frontend via `ApiClient` (`src/Tui/ApiClient.php`) — it never touches the database or ActivityService directly, keeping behavior uniform across frontends
 - `Terminal` (`src/Tui/Terminal.php`): raw mode via `stty`, alternate screen buffer, ANSI rendering, escape-sequence key decoding
-- `TuiApplication` (`src/Tui/TuiApplication.php`): views (Suggestions / Manage Activities), project picker, add/delete flows, delete confirmation, sync status polling every 5s, transient notifications
+- `TuiApplication` (`src/Tui/TuiApplication.php`): views (Suggestions / Manage Activities), project picker (add and delete projects), add/delete flows, delete confirmation, sync status polling every 5s, transient notifications
 - Same behavior as the web UI: thumbs up resets to the initial state, thumbs down auto-advances to the next suggestion; activities list sorted by priority descending
 - Active project id persisted in `data/tui_state.json` (the TUI counterpart of the web app's `localStorage`)
 - Runs as the `tui` Docker Compose service on the `activitygen` network, reaching the API at `http://nginx/api`; `./bin/tui` is the wrapper (its `depends_on` starts nginx + web automatically)
@@ -193,7 +202,8 @@ docker compose run --rm app php bin/console <command>
 **Web Frontend** (`public/`)
 - Single-page application with vanilla JavaScript
 - Project selector in the header: switches the active project scope (persisted
-  in `localStorage`) and a "+" button to add a new project
+  in `localStorage`), a "+" button to add a new project and a "🗑" button to
+  delete the active project (disabled for the default project)
 - Two main views:
   - **Suggestions View**: Display activity suggestions with thumbs up/down buttons for priority adjustment
   - **Manage Activities View**: List, add, and delete activities
@@ -215,6 +225,8 @@ This ensures higher priority activities are selected more frequently while maint
 **Remote (MySQL) - `t_project`:**
 - `id` (INT, PRIMARY KEY AUTO_INCREMENT): Project id
 - `name` (VARCHAR(180), UNIQUE): Project name
+- `archived` (TINYINT(1), DEFAULT 0): Soft-delete flag; archived projects are
+  hidden from every client but keep their name and activities
 
 **Remote (MySQL) - `t_activity`:**
 - `id` (INT, PRIMARY KEY AUTO_INCREMENT): Surrogate row id
@@ -224,12 +236,22 @@ This ensures higher priority activities are selected more frequently while maint
 - UNIQUE KEY on (`activity`, `project_id`)
 
 This schema (including `t_project` and `project_id`) already exists on the
-remote database - it predates this app's code catching up to use it. No
-migration is needed; `RemoteDataSource` queries scope by `project_id` +
-`activity`, which the unique key makes unambiguous.
+remote database - it predates this app's code catching up to use it.
+`RemoteDataSource` queries scope by `project_id` + `activity`, which the unique
+key makes unambiguous.
+
+The one exception is `t_project.archived`, which project deletion introduced.
+`RemoteDataSource::ensureSchema()` adds it on connect if it is missing, the same
+way `LocalDataSource` migrates the SQLite mirror, so no manual migration is
+needed. To pre-apply it by hand:
+```sql
+ALTER TABLE t_project ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0;
+```
 
 **Local (SQLite) - `t_project`:**
-- Same shape as remote; kept as a read-through cache, replaced on every sync
+- Same shape as remote, `archived` included; kept as a read-through cache,
+  replaced on every sync, so archiving and restoring propagate to offline mode.
+  A local cache created before archiving existed gains the column in place.
 
 **Local (SQLite) - `t_activity`:**
 - `project_id` (INTEGER, part of PRIMARY KEY): Owning project

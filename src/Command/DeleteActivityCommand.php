@@ -13,7 +13,8 @@ class DeleteActivityCommand extends Command
 {
     protected static $defaultName = 'activity:delete';
 
-    private const DEFAULT_PROJECT_ID = 1;
+    // The CLI is pinned to this project, which is why it cannot be deleted
+    private const DEFAULT_PROJECT_ID = ActivityService::DEFAULT_PROJECT_ID;
 
     private ActivityService $activityService;
 

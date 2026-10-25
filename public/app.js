@@ -37,6 +37,7 @@ class ActivityGenApp {
         // Project selector
         this.projectSelect = document.getElementById('projectSelect');
         this.btnShowAddProject = document.getElementById('btnShowAddProject');
+        this.btnDeleteProject = document.getElementById('btnDeleteProject');
         this.addProjectFormContainer = document.getElementById('addProjectFormContainer');
         this.newProjectName = document.getElementById('newProjectName');
         this.btnAddProject = document.getElementById('btnAddProject');
@@ -82,6 +83,7 @@ class ActivityGenApp {
         // Project selector
         this.projectSelect.addEventListener('change', () => this.switchProject(this.projectSelect.value));
         this.btnShowAddProject.addEventListener('click', () => this.toggleAddProjectForm(true));
+        this.btnDeleteProject.addEventListener('click', () => this.deleteProject());
         this.btnCancelAddProject.addEventListener('click', () => this.toggleAddProjectForm(false));
         this.btnAddProject.addEventListener('click', () => this.addProject());
         this.newProjectName.addEventListener('keypress', (e) => {
@@ -165,6 +167,20 @@ class ActivityGenApp {
             .join('');
     }
 
+    currentProject() {
+        return this.projects.find(p => String(p.id) === String(this.currentProjectId)) || null;
+    }
+
+    updateProjectControls() {
+        const project = this.currentProject();
+        const deletable = Boolean(project && project.deletable);
+
+        this.btnDeleteProject.disabled = !deletable;
+        this.btnDeleteProject.title = project && !deletable
+            ? `Project "${project.name}" cannot be deleted`
+            : 'Delete project';
+    }
+
     switchProject(projectId) {
         this.currentProjectId = projectId;
         localStorage.setItem(PROJECT_ID_STORAGE_KEY, projectId);
@@ -172,6 +188,7 @@ class ActivityGenApp {
     }
 
     onProjectChanged() {
+        this.updateProjectControls();
         this.resetToInitialState();
 
         const activeView = Object.entries(this.views).find(([, view]) => view.classList.contains('active'));
@@ -208,19 +225,59 @@ class ActivityGenApp {
             const result = await response.json();
 
             if (result.success) {
-                this.showNotification(`Project "${name}" added`, 'success');
+                this.showNotification(
+                    result.data.restored
+                        ? `Project "${result.data.name}" restored`
+                        : `Project "${name}" added`,
+                    'success',
+                );
                 this.toggleAddProjectForm(false);
 
-                this.projects.push(result.data);
-                this.renderProjectSelect();
-                this.projectSelect.value = String(result.data.id);
-                this.switchProject(String(result.data.id));
+                // loadProjects() honours the stored id, so the new project ends
+                // up selected while the list keeps the server's ordering.
+                localStorage.setItem(PROJECT_ID_STORAGE_KEY, String(result.data.id));
+                await this.loadProjects();
             } else {
                 this.showNotification(result.error, 'error');
             }
         } catch (error) {
             this.showNotification('Failed to add project', 'error');
             console.error('Error adding project:', error);
+        }
+    }
+
+    async deleteProject() {
+        const project = this.currentProject();
+
+        if (!project || !project.deletable) {
+            return;
+        }
+
+        const confirmed = await this.showConfirmDialog(
+            `Delete project "${project.name}"? It is archived rather than erased, `
+            + 'so its activities stay in the database and re-adding the same name brings it back.',
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(project.id)}`, {
+                method: 'DELETE',
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showNotification(`Project "${project.name}" deleted`, 'success');
+                await this.loadProjects();
+            } else {
+                this.showNotification(result.error, 'error');
+            }
+        } catch (error) {
+            this.showNotification('Failed to delete project', 'error');
+            console.error('Error deleting project:', error);
         }
     }
 
