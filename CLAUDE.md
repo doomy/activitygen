@@ -4,6 +4,17 @@ ActivityGen is a PHP application that suggests activities using priority-weighte
 
 **Web UI / TUI feature parity rule:** The TUI is a keyboard-driven alternative frontend to the same REST API the web frontend uses. Both must stay in feature parity: any feature or change added to the web app must also be reflected in the TUI, and vice versa. Never add a UI-only capability to one of them.
 
+**Fuzzy search lives in two places on purpose:** Activity search filters the
+list each frontend already holds, so that typing is instant rather than one
+API request (and one remote database round trip) per keystroke. That means the
+matcher exists twice: `src/Service/FuzzyMatcher.php`, which the TUI calls
+directly, and `public/fuzzy.js`, its port for the browser. They must stay in
+step — same constants, same scoring, same ordering, same fold table — or the
+two frontends will rank and highlight differently. The TUI using FuzzyMatcher
+is not a breach of its rule of talking only to the REST API: the matcher is a
+pure function with no data access, and sharing it is what keeps the two
+frontends behaving alike.
+
 The application supports offline mode with automatic synchronization. When offline, it uses a local SQLite database and queues operations to sync when back online.
 
 Both interfaces share the same backend logic through a common service layer (ActivityService), ensuring consistent behavior across CLI and web.
@@ -157,15 +168,13 @@ docker compose run --rm app php bin/console <command>
   - Handles priority adjustments with proper bounds checking
   - Manages activity CRUD operations
   - Encapsulates business rules (min priority, adjustment increment)
-  - `searchActivities()` fuzzy-filters and ranks a project's activities
-- `FuzzyMatcher`: Subsequence matching with fzf-style scoring, used by
-  `searchActivities()`. A query matches when its characters appear in order,
-  not necessarily adjacent ("wtt" matches "Water the tomatoes"). The score
-  favours matches that start a word, run without gaps and cover a short
-  stretch. Matching ignores ASCII case and Latin diacritics ("cesky" finds
-  "česky"), and returns character offsets, not byte offsets. It lives in the
-  service layer so that the web frontend and the TUI, which both search
-  through the API, rank and highlight results identically.
+- `FuzzyMatcher`: Subsequence matching with fzf-style scoring, used for the
+  activity search. A query matches when its characters appear in order, not
+  necessarily adjacent ("wtt" matches "Water the tomatoes"). The score favours
+  matches that start a word, run without gaps and cover a short stretch.
+  `rank()` filters and orders a list, breaking ties by priority then name.
+  Matching ignores ASCII case and Latin diacritics ("cesky" finds "česky"),
+  and returns character offsets, not byte offsets.
 
 **Commands** (`src/Command/`)
 - `GetActivityCommand`: Main interactive loop for activity selection with priority adjustments
@@ -186,10 +195,9 @@ docker compose run --rm app php bin/console <command>
     connection). This is a soft delete: the project row is flagged `archived`
     and its activities are left untouched, so nothing is lost. The default
     project (id 1) cannot be deleted because the CLI is pinned to it.
-  - `GET /api/activities?project_id=&q=` - List the activities in a project.
-    With `q` the list is fuzzy-filtered and comes back best match first, each
-    item carrying a `matched` array of character offsets for highlighting.
-    Without `q` the behaviour is unchanged.
+  - `GET /api/activities?project_id=` - List all activities in a project.
+    There is no search parameter: both frontends fetch the list once and
+    filter it locally, so that typing never waits on a database round trip.
   - `GET /api/activities/suggest?project_id=` - Get random activity suggestion from a project
   - `POST /api/activities` - Add new activity (`project_id` in body)
   - `DELETE /api/activities/{name}?project_id=` - Delete activity
@@ -205,7 +213,8 @@ docker compose run --rm app php bin/console <command>
 
 **TUI Frontend** (`src/Tui/`, `bin/tui-app`)
 - Full-screen, completely keyboard-controlled terminal UI mirroring the web frontend
-- Talks to the same REST API as the web frontend via `ApiClient` (`src/Tui/ApiClient.php`) — it never touches the database or ActivityService directly, keeping behavior uniform across frontends
+- Talks to the same REST API as the web frontend via `ApiClient` (`src/Tui/ApiClient.php`) — it never touches the database or ActivityService directly, keeping behavior uniform across frontends. The one piece of shared PHP it does call is `FuzzyMatcher`, a pure function with no data access, so that search ranks identically in both frontends
+- Fetches a project's activities once and filters them in memory while you type, so searching costs no API requests
 - `Terminal` (`src/Tui/Terminal.php`): raw mode via `stty`, alternate screen buffer, ANSI rendering, escape-sequence key decoding
 - `TuiApplication` (`src/Tui/TuiApplication.php`): views (Suggestions / Manage Activities), project picker (add and delete projects), add/delete flows, delete confirmation, live fuzzy search over the activities list, sync status polling every 5s, transient notifications
 - Same behavior as the web UI: thumbs up resets to the initial state, thumbs down auto-advances to the next suggestion; activities list sorted by priority descending, or by match quality while a search is active
@@ -220,8 +229,8 @@ docker compose run --rm app php bin/console <command>
 - Two main views:
   - **Suggestions View**: Display activity suggestions with thumbs up/down buttons for priority adjustment
   - **Manage Activities View**: List, add, and delete activities, with a
-    fuzzy search box that filters the list (debounced, matched characters
-    highlighted)
+    fuzzy search box that filters the loaded list in the browser as you type,
+    with matched characters highlighted
 - Real-time sync status indicator with auto-polling
 - Responsive design for mobile and desktop
 
@@ -325,6 +334,8 @@ Offline behavior:
 - `public/`: Web application files
   - `index.html`: Main HTML page
   - `app.js`: Frontend JavaScript application
+  - `fuzzy.js`: Browser port of `FuzzyMatcher`, loaded before `app.js` (see the
+    fuzzy search note at the top)
   - `styles.css`: CSS styles
   - `api/index.php`: REST API entry point
 - `data/`: Local SQLite database (not version controlled except .gitkeep)

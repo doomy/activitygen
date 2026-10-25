@@ -132,48 +132,6 @@ class ActivityService
     }
 
     /**
-     * Search the activities of a project with fuzzy matching.
-     *
-     * An empty query behaves exactly like getAllActivities(). Otherwise only
-     * matching activities come back, best match first, each carrying the
-     * character offsets that matched so a frontend can highlight them.
-     *
-     * Ties are broken by priority and then by name, so the order is stable.
-     *
-     * @return array<array{activity: string, priority: float, matched?: int[]}>
-     */
-    public function searchActivities(int $projectId, string $query): array
-    {
-        $query = trim($query);
-        $activities = $this->getAllActivities($projectId);
-
-        if ($query === '') {
-            return $activities;
-        }
-
-        $ranked = [];
-
-        foreach ($activities as $activity) {
-            $match = FuzzyMatcher::match($query, $activity['activity']);
-
-            if ($match === null) {
-                continue;
-            }
-
-            $activity['matched'] = $match['matched'];
-            $ranked[] = ['score' => $match['score'], 'activity' => $activity];
-        }
-
-        usort($ranked, static function (array $a, array $b) {
-            return $b['score'] <=> $a['score']
-                ?: $b['activity']['priority'] <=> $a['activity']['priority']
-                ?: strcmp($a['activity']['activity'], $b['activity']['activity']);
-        });
-
-        return array_column($ranked, 'activity');
-    }
-
-    /**
      * Get a single activity by name within a project
      *
      * @return array{activity: string, priority: float}|null

@@ -1,6 +1,5 @@
 const API_BASE = '/api';
 const PROJECT_ID_STORAGE_KEY = 'activitygen_project_id';
-const SEARCH_DEBOUNCE_MS = 150;
 
 class ActivityGenApp {
     constructor() {
@@ -11,7 +10,7 @@ class ActivityGenApp {
         this.projects = [];
         this.confirmDialogResolve = null;
         this.searchQuery = '';
-        this.searchDebounce = null;
+        this.allActivities = [];
 
         this.initElements();
         this.attachEventListeners();
@@ -434,8 +433,9 @@ class ActivityGenApp {
         this.searchQuery = this.activitySearch.value;
         this.btnClearSearch.classList.toggle('hidden', this.searchQuery === '');
 
-        clearTimeout(this.searchDebounce);
-        this.searchDebounce = setTimeout(() => this.loadActivities(), SEARCH_DEBOUNCE_MS);
+        // Filtering the list we already hold, so this is immediate: no
+        // request, and nothing to debounce
+        this.renderActivities();
     }
 
     clearSearch() {
@@ -444,63 +444,53 @@ class ActivityGenApp {
         }
 
         this.resetSearch();
-        this.loadActivities();
+        this.renderActivities();
         this.activitySearch.focus();
     }
 
     resetSearch() {
-        clearTimeout(this.searchDebounce);
         this.searchQuery = '';
         this.activitySearch.value = '';
         this.btnClearSearch.classList.add('hidden');
     }
 
+    /**
+     * Fetches the project's activities once. Searching then filters this list
+     * in the browser, so typing never waits on the API.
+     */
     async loadActivities() {
-        // The query this request is for, so a slow response for an older one
-        // cannot overwrite the list the user is looking at now
-        const query = this.searchQuery;
-
         try {
             this.activitiesList.innerHTML = '<p class="loading">Loading activities...</p>';
 
             const params = new URLSearchParams({ project_id: this.currentProjectId });
-            if (query !== '') {
-                params.set('q', query);
-            }
-
             const response = await fetch(`${API_BASE}/activities?${params}`);
             const result = await response.json();
 
-            if (query !== this.searchQuery) {
-                return;
-            }
-
             if (result.success) {
-                this.renderActivities(result.data, query);
+                this.allActivities = result.data.sort((a, b) => b.priority - a.priority);
+                this.renderActivities();
             } else {
+                this.allActivities = [];
                 this.activitiesList.innerHTML = `<p class="loading">${result.error}</p>`;
             }
         } catch (error) {
-            if (query !== this.searchQuery) {
-                return;
-            }
+            this.allActivities = [];
             this.activitiesList.innerHTML = '<p class="loading">Failed to load activities</p>';
             console.error('Error loading activities:', error);
         }
     }
 
-    renderActivities(activities, query = '') {
+    renderActivities() {
+        const query = this.searchQuery;
+        // Sorted by priority when there is no query, best match first when
+        // there is; fuzzyRank mirrors the PHP matcher the TUI uses
+        const activities = fuzzyRank(query, this.allActivities);
+
         if (activities.length === 0) {
-            this.activitiesList.innerHTML = query === ''
+            this.activitiesList.innerHTML = query.trim() === ''
                 ? '<p class="loading">No activities yet. Add one to get started!</p>'
                 : `<p class="loading">No activity matches "${this.escapeHtml(query)}"</p>`;
             return;
-        }
-
-        // Without a query the API returns the plain list, so sort it here as
-        // before. With one it comes back best match first, which we keep.
-        if (query === '') {
-            activities.sort((a, b) => b.priority - a.priority);
         }
 
         this.activitiesList.innerHTML = activities

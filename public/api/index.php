@@ -152,13 +152,12 @@ $app->delete('/projects/{id:[0-9]+}', function (Request $request, Response $resp
     }
 });
 
-// GET /activities - List the activities in a project, optionally fuzzy-filtered
-// by `q`. With a query the results come back best match first, each with the
-// character offsets that matched, so both frontends rank and highlight alike.
+// GET /activities - List all activities in a project
+// Searching is not a parameter here: both frontends filter the list they
+// already hold, so that typing does not wait on a database round trip.
 $app->get('/activities', function (Request $request, Response $response) use ($activityService) {
     try {
-        $queryParams = $request->getQueryParams();
-        $projectId = requireProjectId($queryParams);
+        $projectId = requireProjectId($request->getQueryParams());
         if ($projectId === null) {
             return jsonResponse($response, [
                 'success' => false,
@@ -166,7 +165,7 @@ $app->get('/activities', function (Request $request, Response $response) use ($a
             ], 400);
         }
 
-        $activities = $activityService->searchActivities($projectId, (string)($queryParams['q'] ?? ''));
+        $activities = $activityService->getAllActivities($projectId);
         return jsonResponse($response, [
             'success' => true,
             'data' => $activities,
