@@ -1,5 +1,6 @@
 const API_BASE = '/api';
 const PROJECT_ID_STORAGE_KEY = 'activitygen_project_id';
+const SEARCH_DEBOUNCE_MS = 150;
 
 class ActivityGenApp {
     constructor() {
@@ -9,6 +10,8 @@ class ActivityGenApp {
         this.currentProjectId = null;
         this.projects = [];
         this.confirmDialogResolve = null;
+        this.searchQuery = '';
+        this.searchDebounce = null;
 
         this.initElements();
         this.attachEventListeners();
@@ -63,6 +66,8 @@ class ActivityGenApp {
         this.newActivityPriority = document.getElementById('newActivityPriority');
         this.btnAddActivity = document.getElementById('btnAddActivity');
         this.btnCancelAdd = document.getElementById('btnCancelAdd');
+        this.activitySearch = document.getElementById('activitySearch');
+        this.btnClearSearch = document.getElementById('btnClearSearch');
         this.activitiesList = document.getElementById('activitiesList');
 
         // Sync status
@@ -110,6 +115,13 @@ class ActivityGenApp {
         this.newActivityName.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.addActivity();
         });
+
+        // Search
+        this.activitySearch.addEventListener('input', () => this.onSearchInput());
+        this.activitySearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.clearSearch();
+        });
+        this.btnClearSearch.addEventListener('click', () => this.clearSearch());
 
         // Sync button
         this.syncButton.addEventListener('click', () => this.manualSync());
@@ -189,6 +201,7 @@ class ActivityGenApp {
 
     onProjectChanged() {
         this.updateProjectControls();
+        this.resetSearch();
         this.resetToInitialState();
 
         const activeView = Object.entries(this.views).find(([, view]) => view.classList.contains('active'));
@@ -417,39 +430,85 @@ class ActivityGenApp {
         }
     }
 
+    onSearchInput() {
+        this.searchQuery = this.activitySearch.value;
+        this.btnClearSearch.classList.toggle('hidden', this.searchQuery === '');
+
+        clearTimeout(this.searchDebounce);
+        this.searchDebounce = setTimeout(() => this.loadActivities(), SEARCH_DEBOUNCE_MS);
+    }
+
+    clearSearch() {
+        if (this.searchQuery === '' && this.activitySearch.value === '') {
+            return;
+        }
+
+        this.resetSearch();
+        this.loadActivities();
+        this.activitySearch.focus();
+    }
+
+    resetSearch() {
+        clearTimeout(this.searchDebounce);
+        this.searchQuery = '';
+        this.activitySearch.value = '';
+        this.btnClearSearch.classList.add('hidden');
+    }
+
     async loadActivities() {
+        // The query this request is for, so a slow response for an older one
+        // cannot overwrite the list the user is looking at now
+        const query = this.searchQuery;
+
         try {
             this.activitiesList.innerHTML = '<p class="loading">Loading activities...</p>';
 
-            const response = await fetch(`${API_BASE}/activities?project_id=${this.currentProjectId}`);
+            const params = new URLSearchParams({ project_id: this.currentProjectId });
+            if (query !== '') {
+                params.set('q', query);
+            }
+
+            const response = await fetch(`${API_BASE}/activities?${params}`);
             const result = await response.json();
 
+            if (query !== this.searchQuery) {
+                return;
+            }
+
             if (result.success) {
-                this.renderActivities(result.data);
+                this.renderActivities(result.data, query);
             } else {
                 this.activitiesList.innerHTML = `<p class="loading">${result.error}</p>`;
             }
         } catch (error) {
+            if (query !== this.searchQuery) {
+                return;
+            }
             this.activitiesList.innerHTML = '<p class="loading">Failed to load activities</p>';
             console.error('Error loading activities:', error);
         }
     }
 
-    renderActivities(activities) {
+    renderActivities(activities, query = '') {
         if (activities.length === 0) {
-            this.activitiesList.innerHTML = '<p class="loading">No activities yet. Add one to get started!</p>';
+            this.activitiesList.innerHTML = query === ''
+                ? '<p class="loading">No activities yet. Add one to get started!</p>'
+                : `<p class="loading">No activity matches "${this.escapeHtml(query)}"</p>`;
             return;
         }
 
-        // Sort by priority descending
-        activities.sort((a, b) => b.priority - a.priority);
+        // Without a query the API returns the plain list, so sort it here as
+        // before. With one it comes back best match first, which we keep.
+        if (query === '') {
+            activities.sort((a, b) => b.priority - a.priority);
+        }
 
         this.activitiesList.innerHTML = activities
             .map(
                 activity => `
             <div class="activity-item" data-name="${this.escapeHtml(activity.activity)}">
                 <div class="activity-info">
-                    <div class="activity-item-name">${this.escapeHtml(activity.activity)}</div>
+                    <div class="activity-item-name">${this.highlightMatch(activity.activity, activity.matched)}</div>
                     <div class="activity-item-priority">Priority: ${activity.priority.toFixed(1)}</div>
                 </div>
                 <div class="activity-actions">
@@ -459,6 +518,36 @@ class ActivityGenApp {
         `,
             )
             .join('');
+    }
+
+    /**
+     * Wrap the characters the API reported as matched in <mark>. The offsets
+     * count characters, so the text is walked the same way.
+     */
+    highlightMatch(text, matched) {
+        if (!matched || matched.length === 0) {
+            return this.escapeHtml(text);
+        }
+
+        const positions = new Set(matched);
+        let html = '';
+        let open = false;
+
+        Array.from(text).forEach((char, index) => {
+            const isMatch = positions.has(index);
+
+            if (isMatch && !open) {
+                html += '<mark>';
+                open = true;
+            } else if (!isMatch && open) {
+                html += '</mark>';
+                open = false;
+            }
+
+            html += this.escapeHtml(char);
+        });
+
+        return open ? `${html}</mark>` : html;
     }
 
     toggleAddForm(show) {
